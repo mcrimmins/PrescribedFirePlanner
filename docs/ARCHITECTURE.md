@@ -81,6 +81,9 @@ lives in one table, `RX_VARS`, in `R/constants.R`. Adding NFDRS variables later 
   Unconstrained variables are ignored, including when they're missing.
   Wind direction: 360 is treated as 0, and a **calm hour (wind speed 0) passes** a direction limit whatever direction is
   reported. A missing wind speed with a direction limit counts as missing.
+- v1 (hour totals): `rx_flag` also adds `only_<var>` per constrained variable: `TRUE` when that limit fails and every
+  other constrained limit passes ("the one limit holding the hour out"), `NA` when `in_rx` is `NA`. With one limit on,
+  `only_<var>` is simply `!pass_<var>`.
 
 ### 3. The one aggregation (`R/climatology.R`)
 ```r
@@ -98,6 +101,10 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
   window, wrapping from Dec into Jan, and divide. Because it's sums ÷ counts, the smoothed result is exact; `n_years` counts
   distinct years inside the window. About 0.1 s at 190k rows. Asking for `smooth_days > 0` without `doy` in `by` is an error,
   not a silent no-op. Output columns: the `by` columns, `value`, `kind` ("share" or "mean"), `n_valid`, `n_missing`, `n_years`, `stat`.
+- v1 (hour totals): the output gains `n_true` (the summed hours behind a share) so tables count hours from the same
+  call instead of multiplying `stat` back out. Per-year counts use `by = c("year", "month")` or `c("year", "date")`, no
+  smoothing; the median year, range and total are taken from those rows in `R/totals.R` (`totals_*`, presentation of
+  counts only: no flagging, no second aggregation), which also writes the CSV header lines.
 - The one planned addition is percentiles for the daily range charts in v1. `clim_quantiles()` will share the same
   grouping and wrap-around window helper (`.clim_window()`) rather than repeat it.
 
@@ -149,7 +156,7 @@ Written once, used by the Data quality tab **and** by the network tests (which c
   (long format: `preset_id, name, var, min, max, ignition_start, ignition_end, min_window_h, reviewed`).
 
 ## Naming, to avoid the ChartBuilder collisions
-- Public functions carry a layer prefix: `hourly_`, `rx_`, `clim_`, `quality_`, `sun_`, `plot_`, `tip_`, `mod_`. No bare names that shiny, dplyr or
+- Public functions carry a layer prefix: `hourly_`, `rx_`, `clim_`, `quality_`, `sun_`, `totals_`, `plot_`, `tip_`, `mod_`. No bare names that shiny, dplyr or
   plotly also export (`filter`, `validate`, `hr`, `layout`, ...).
 - Internal helpers and every test helper start with a dot.
 - No `library()` in `R/` beyond the existing `dplyr` and `tibble` in `fems_api.R`; everything else is namespaced (`plotly::plot_ly`).

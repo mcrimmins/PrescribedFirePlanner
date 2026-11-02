@@ -65,7 +65,7 @@ burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimm
 ## R/Shiny namespace rules (carryover §2)
 - No `library()` in `R/` files, except the existing `tibble`/`dplyr` in `fems_api.R`. Write the package name before everything else
   (`jsonlite::`, `httr::`, `plotly::`, `leaflet::`). `app.R` attaches shiny, bslib and dplyr, and sources `R/` in a fixed order.
-- Public functions carry a layer prefix: `hourly_`, `rx_`, `clim_`, `plot_`, `tip_`, `mod_`. Never reuse a name shiny,
+- Public functions carry a layer prefix: `hourly_`, `rx_`, `clim_`, `quality_`, `sun_`, `totals_`, `plot_`, `tip_`, `mod_`. Never reuse a name shiny,
   dplyr or plotly exports (`filter`, `validate`, `hr`, `layout`, ...). Internal helpers start with a dot.
 - On an "unused argument" error from a function shiny exports, run `find("<name>")` first.
   RStudio's Restart R does **not** clear the global environment; use `rm(list = ls())`.

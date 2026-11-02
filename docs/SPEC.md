@@ -83,6 +83,22 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   - Daily window length: the longest consecutive run of in-prescription hours within the ignition period,
     summarized by month and week as the median run and the % of days with a run ≥ the minimum usable window.
   - A table of how often each limit is met on its own, so trainees can see which variable is limiting.
+- **Hour totals (report out), on every analysis tab:** counts of hours, so trainees can report "how many burnable hours"
+  as well as "what share". Each tab shows a **totals table under its chart**, a **CSV download**, and the same table in the PDF.
+  - **Rows by tab:** Climatology by **month** (plus a year row); Past event by **day** (plus an event total); Same dates by
+    **year** for the window (per-day rows in the CSV); Forecast by **day**, from the central forecast, with the observed
+    count beside it after the reveal.
+  - **Columns:** hours in prescription (all limits met); for each constrained variable, **hours that limit is met on its own**
+    and **hours that miss the prescription only because of that limit** (every other limit passes), which shows which
+    limit is holding the window shut; and hours excluded for missing or screened data, so every count can be checked.
+  - **Climatology counts are per year:** for each month, the **median year, the range (lowest and highest year, named)
+    and the 2005–2025 total**, e.g. "Mar: 118 h in a typical year (64 h in 2010 to 171 h in 2018); 2,474 h over 21 years".
+    A year-month with less than 80% of its hours reporting is left out of the median and range (and footnoted), since
+    missing hours would read as fewer burnable hours; it still counts toward the total and the excluded-hours column.
+  - Counts follow the ignition period when one is set (the column header says so), and the hour convention shown (LST or clock).
+  - **CSV:** a tidy table with header lines starting `#` giving station, ID, data source and snapshot date, the prescription,
+    years, hour convention and app version, so a saved file explains itself. Named `rxwx_<station>_<tab>_<date>.csv`.
+  - Computed with `clim_summarise()` (sums, no smoothing) on columns from `rx_flag()`; no second counting path.
 - **Past event:** hourly traces for the selected range with in-prescription hours highlighted and out-of-prescription
   hours greyed, plus the limiting variable for each hour.
 - **Same dates, many years:** the selected window overlaid or stacked for every year in the record, with in-prescription hours counted per year.
@@ -152,15 +168,18 @@ using the same wording, units and time label ("LST", or the clock-time zone when
 | 4 bundled station snapshots, refreshable from FEMS | Scheduled automatic snapshot refresh |
 | | ERA5 / Open-Meteo gridded hourly data |
 | Climatology %, window length, limiting-variable table | Real or archived forecasts |
+| Hour totals by month/day and by variable: table, CSV, PDF | |
 | Past event and same-dates-across-years views | 1-hr fine dead fuel moisture (Fosberg) calculator |
 | Synthetic forecast with reveal | Smoke dispersion, mixing height |
-| Exploratory one-page PDF | CSV or image export, saved user prescriptions |
+| Exploratory one-page PDF | Image export, saved user prescriptions |
 | Public link on Posit Connect (viz.datascience.arizona.edu) | Operational use |
 
 ## Open items
 - PFTC review of the drafted presets, curated stations and forecast error sizes.
 - Whether a per-hour precipitation limit is enough, or trainees need "hours since measurable rain".
 - Whether the synthetic forecast should also cover precipitation and solar radiation.
+- Hour totals: whether PFTC wants "hours in prescription" counted only in daylight or the ignition period by default,
+  and whether the 80% coverage rule for the median year suits their stations.
 - The Connect app name and URL, chosen once and not renamed.
 - Review of the lenient screening thresholds against PFTC stations.
 - Find the source of the 2020 solar change (FEMS/WIMS processing or RAWS standard?) and SAGUARO's 2021 change (datalogger
