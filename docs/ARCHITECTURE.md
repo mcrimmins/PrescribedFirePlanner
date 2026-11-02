@@ -49,16 +49,24 @@ One row per station-local hour. Every data source must produce this; nothing aft
   columns from the station's IANA zone: `time_clock` (POSIXct, for time-series views) and `hour_clock` (for hour-of-day
   grouping when the clock-time toggle is on). At stations without DST these equal LST.
 - `hourly_qc(h)`: lenient screening. It sets clear faults to `NA` and attaches `attr(h, "qc_log")`, one row per removed run
-  (rule, variable, start, hours, value), for the data-quality summary. The rules, with thresholds in `QC_*` constants:
-  - **stuck:** the same value for 24 h or more (temperature, RH below 100, non-zero wind, gust, daytime solar).
-  - **long calm:** wind 0 for more than 24 h, which sets wind speed, gust and direction to missing.
+  (rule, variable, start_date, start_hour, hours, days, value), for the data-quality report. The rules, in this order,
+  with thresholds in `QC_*` constants (tuned on the four bundled stations, 2 Nov 2026):
+  - **limits:** a reading outside temperature −40..130 °F, RH 0..100, wind 0..120 mph, gust 0..200, precipitation 0..6 in/hr or
+    solar 0..1500 W/m² removes that variable for the **whole local day plus one day either side**. A failing sensor drifts
+    first: BLOXHAM read 112 °F the day before it passed 130 °F, in February 2005.
   - **spike:** a single hour differing from both neighbours in the same direction by more than 20 °F, or 40 % RH.
-  - **limits:** outside temperature −40..130 °F, RH 0..100, wind 0..120 mph, precipitation 0..6 in/hr, solar 0..1500 W/m².
+  - **stuck:** the same value for 24 h or more (temperature, RH below 100, non-zero wind and gust, direction while the wind blows).
+    Daylight solar radiation (> 50 W/m²) is never 24 h long, so it uses 6 identical readings in a row; SAGUARO's longest real run is 3.
+  - **long calm:** wind 0 for more than 24 h, which sets wind speed, gust and direction to missing.
+  - Derived columns follow: dewpoint and VPD go with temperature or RH, the hot-dry-windy index with wind.
 - `hourly_validate(h)`: checks columns, types, ranges and duplicate keys; `stop()`s with a list of problems. Used by the app at load time and by tests.
-- `hourly_load_station(station_id, years = RX_BASELINE_YEARS, progress = NULL, prefer_bundled = TRUE)`: get the raw weather,
-  then map, add calendar, QC, validate. The raw weather comes from `hourly_read_bundled()` when the station is in the manifest
-  and `prefer_bundled` is true (the Refresh button sets it false); otherwise from FEMS. Either way the same steps follow, so a
-  screening change applies to both. The result carries `attr(h, "data_source")`: `"bundled"` with the snapshot date, or `"FEMS live"`.
+- `hourly_load_station(station_id, prefer_bundled = TRUE, start_date, end_date, progress = NULL)` returns a **station object**,
+  a list: `$meta` (from `hourly_station_meta()`: name, lat/lon, elevation, tz, standard offset, DST, metadata precipitation),
+  `$hourly`, `$qc_log`, `$grid_added` and `$source` (`type` "bundled" or "FEMS live", plus a `detail` sentence). It's a list,
+  not attributes, because data-frame subsetting drops attributes. The raw weather comes from `hourly_read_bundled()` when the
+  station is in the manifest and `prefer_bundled` is true (the Refresh button sets it false); otherwise from FEMS. Either way the
+  same steps follow, so a screening change applies to both. Takes about 1 s for a bundled station.
+- `hourly_baseline(h)` keeps the `RX_BASELINE_YEARS` rows; the full record stays loaded for past-event views.
 - `hourly_read_bundled(station_id)`: reads `data/stations_bundled/<id>.rds`, checks its checksum against the manifest and
   checks the download contract; returns `NULL` (so the app falls back to FEMS) with a warning if either fails.
 
@@ -86,20 +94,28 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
 - Every view and table calls this function. The month × hour heatmap, the month × hour table, the per-limit pass rates
   (`value = "pass_relativeHumidity"`), the later day-of-year chart (`by = c("doy", "hour"), smooth_days = 7`) and the
   per-variable panels (`value = "relativeHumidity"`) all use it.
-- How it works: count `n_valid` and the sum of `value` per group, then (only when `by` has `doy` or `week`) take a
-  rolling sum over the window, wrapping from Dec into Jan, and divide. Because it's sums ÷ counts, the smoothed result is exact,
-  and it stays fast at 184k rows. Asking for `smooth_days > 0` with `by = "month"` is an error, not a silent no-op.
+- How it works: count `n_valid` and the sum of `value` per group, then (only when `by` has `doy`) take a rolling sum over the
+  window, wrapping from Dec into Jan, and divide. Because it's sums ÷ counts, the smoothed result is exact; `n_years` counts
+  distinct years inside the window. About 0.1 s at 190k rows. Asking for `smooth_days > 0` without `doy` in `by` is an error,
+  not a silent no-op. Output columns: the `by` columns, `value`, `kind` ("share" or "mean"), `n_valid`, `n_missing`, `n_years`, `stat`.
 - The one planned addition is percentiles for the daily range charts in v1. `clim_quantiles()` will share the same
   grouping and wrap-around window helper (`.clim_window()`) rather than repeat it.
 
 ### Data quality (`R/quality.R`) and sun times (`R/sun.R`)
 Written once, used by the Data quality tab **and** by the network tests (which currently carry their own copies in
 `tests/helpers.R`; those move here when this file exists).
-- `quality_report(h, meta)` → a tibble of items: `section` (coverage, screening, timing, plausibility), `severity`
-  ("affects" or "info"), `variable`, `start`, `end`, `found`, `action`, `affects` (the sentence shown to users).
-  It calls the functions below.
-- `quality_coverage(h)` → % reporting per year × variable, and the longest gaps.
-- `quality_screening(h)` → items from `attr(h, "qc_log")`.
+- `quality_report(st)` (a station object) → a data frame of items: `section` (screening, timing, coverage, plausibility, source),
+  `severity` ("affects" or "info"), `variable`, `start`, `end`, `found`, `action`, `affects`; "affects" items first.
+  `quality_badge(rep)` counts them. Screening is grouped, **one item per rule and variable** (e.g. "Wind reported calm for more
+  than 24 h 39 times ... longest 294 h"); the run-by-run detail stays in `st$qc_log` for a table on the tab. Bundled stations
+  come out at 4–7 badge items each.
+- Always reported (info): the data source, the observation minute, and hours added by grid completion.
+- `quality_coverage(h)` → % reporting per year × variable; `quality_gaps(h)` → the longest gaps.
+- **Calm share:** wind calm in more than `QUALITY_CALM_SHARE` (20%) of baseline hours is an "affects" item, with the trend
+  (BLOXHAM: about 18% in 2005–07 rising to 42% in 2023–25), since a wind-speed minimum then excludes many hours.
+- **Precipitation:** the median annual total against the metadata average. Below 0.4 or above 2.5 → units suspect. 0.4–0.7 →
+  "the gauge probably misses snowfall" (CRANE 0.51, ESTES PARK 0.67). Single dry or wet years are compared with the station's
+  **own** median, not the metadata average.
 - `quality_timing(h, meta)` → per year × variable daily-cycle peak hour (first harmonic) and solar centroid minus solar noon,
   then `quality_step()` on each series. That finds the split year that best separates two levels and reports it when the step is
   ≥ `QUALITY_STEP_H` (0.3 h) and ≥ 4 × the year-to-year spread.
@@ -173,7 +189,9 @@ The network-free tests can also run in Claude's container first, but Mike's run 
 1. **Download layer (done 2026-11-02):** fix the weather-window bug in `fems_download_weather()` (request a day earlier and a day later in UTC,
    then trim to local dates), and add the retry to `fems_gql()`. Tests: `test_fems_retry.R` plus re-running the smoke test.
    Then **1b.** `scripts/build_station_cache.R` and `test_station_cache.R`; build the four snapshots.
-2. `constants.R`, `sun.R`, `hourly.R` (with QC), `quality.R`, `rx.R`, `climatology.R`, plus their tests. Then the network tests
-   switch from their own copies to the `R/` functions.
+2. **Core layers (written 2026-11-02, pending Mike's run):** `constants.R`, `sun.R`, `hourly.R` (with QC), `quality.R`, `rx.R`,
+   `climatology.R`, plus `test_sun.R`, `test_hourly.R`, `test_rx_flag.R`, `test_climatology.R`, `test_quality.R` (no network;
+   the hourly, climatology and quality tests also run the real bundled snapshots). Still to do: switch the network tests from
+   their own copies in `tests/helpers.R` to the `R/` functions.
 3. `tooltips.R`, `plots.R`, the four modules (station, quality, rx, climatology) and `app.R` for v0.1; run locally.
 4. First deploy to Connect with `deployApp(appName = ...)` once the app name and URL are decided.

@@ -32,6 +32,10 @@ burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimm
 - **Hours are LST everywhere in the analysis.** FEMS labels hours in local standard time all year (confirmed in FL, CO, CA).
   `hour_clock` and `time_clock` are display-only columns for the clock-time toggle; never flag or aggregate on clock time unless
   the toggle asks for it, and never feed clock time back into the data.
+- **A loaded station is a list, not a data frame:** `st <- hourly_load_station(id)` gives `st$meta`, `st$hourly`, `st$qc_log`,
+  `st$grid_added`, `st$source`. Pass `st` around. Don't keep metadata in attributes, because data-frame subsetting drops them.
+- **Single-number conditions use `if`, never `ifelse()`:** `ifelse()` with a length-1 test returns one value, which then gets
+  recycled over every hour (this was a real bug in `.rx_in_sector()`, caught by `test_rx_flag.R`).
 - **Screening runs before flagging:** `hourly_qc()` (lenient) sets clear sensor faults to `NA` and logs them; screened hours
   are excluded hours. Thresholds are `QC_*` constants.
 - **Wind direction:** 360 is treated as 0; calm hours (0 mph) pass a direction limit.

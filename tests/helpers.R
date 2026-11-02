@@ -154,6 +154,42 @@
   TRUE
 }
 
+# ---- app layers (no network) --------------------------------------------------
+# Sources the app's core layers in app order. Returns TRUE, or stops the test.
+APP_CORE_FILES <- c("constants", "sun", "hourly", "quality", "rx", "climatology")
+.source_core <- function(prefix = "A") {
+  at_root <- file.exists("PrescribedFirePlanner.Rproj") && dir.exists("R")
+  .check(paste0(prefix, "1 working directory is the project root"), at_root,
+         if (at_root) "" else "open PrescribedFirePlanner.Rproj (or setwd() to it) and re-run")
+  if (!at_root) stop("not at project root")
+  ok <- TRUE
+  for (f in APP_CORE_FILES) {
+    path <- file.path("R", paste0(f, ".R"))
+    r <- .run(paste("source", path), source(path))
+    ok <- ok && r$ok
+  }
+  .check(paste0(prefix, "2 core layers load (", paste(APP_CORE_FILES, collapse = ", "), ")"), ok)
+  if (!ok) stop("core layers did not load")
+  .check(paste0(prefix, "3 jsonlite not attached (would mask shiny::validate)"), !("package:jsonlite" %in% search()))
+  TRUE
+}
+
+# A fake fems_download_weather() result: every hour of `dates`, smooth
+# diurnal cycles, observation minute 8. Tests then plant faults in it.
+.fake_wx <- function(dates, station_id = "21202") {
+  g <- expand.grid(hour = 0:23, date = dates)
+  n <- nrow(g); h <- g$hour
+  cyc <- cos((h - 15) / 24 * 2 * pi)
+  data.frame(station_id = station_id, date = g$date, hour = as.integer(h), record_type = "O",
+             obs_minute = 8L,
+             temperature = round(70 + 15 * cyc + (seq_len(n) %% 7) * 0.1, 1),
+             relativeHumidity = round(35 - 15 * cyc + (seq_len(n) %% 5) * 0.1, 1),
+             precipitation = 0, windSpeed = 3 + (seq_len(n) %% 4), windDirection = (seq_len(n) * 37) %% 360,
+             gustSpeed = 8 + (seq_len(n) %% 4), gustDirection = (seq_len(n) * 41) %% 360,
+             solarRadiation = pmax(0, round(900 * sin(pi * (h - 6) / 13) + (seq_len(n) %% 3))) * (h >= 6 & h <= 19),
+             vpd = 2, hdw = 20, dewpoint = 40, stringsAsFactors = FALSE)
+}
+
 # ---- station metadata -------------------------------------------------------
 # Joins the two metadata CSVs for one station. NULL if not found.
 .metadata_row <- function(station_id) {
