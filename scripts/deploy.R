@@ -19,8 +19,9 @@
 # Then it asks you to type the app name to confirm, deploys exactly the
 # checked file list, and prints the URL and the git tag commands to run.
 #
-# Set dry_run <- TRUE to run every check and list the bundle without
-# deploying. A transcript goes to tests/logs/deploy_<time>.txt (gitignored).
+# For a dry run, just press Enter at the confirmation prompt: every check has
+# run and nothing is deployed. (dry_run <- TRUE skips the prompt.) Nothing in
+# this file needs editing between runs, so git stays clean. A transcript goes to tests/logs/deploy_<time>.txt (gitignored).
 #
 # The FEMS key is sent with rsconnect's envVars: values are taken from your
 # session (.Renviron), sent over HTTPS, and are never written to the bundle,
@@ -31,21 +32,33 @@ local({
   source("tests/helpers.R", local = TRUE)   # logging and check helpers only
 
   # ---- settings ------------------------------------------------------------------
-  app_name  <- "rxwx"        # CHOOSE ONCE and never rename (it sets the URL), e.g. "rxwx"
+  app_name  <- "rxwx"    # chosen once; never rename (it sets the URL)
   app_title <- "Prescribed Fire Weather Explorer"
   account   <- "crimmins"
   server    <- "viz.datascience.arizona.edu"
-  dry_run   <- FALSE     # TRUE: checks and bundle list only
+  dry_run   <- FALSE     # TRUE: checks only, no prompt (or just press Enter at the prompt)
   run_tests <- TRUE      # run the network-free tests first (about 2 minutes)
   send_env  <- c("FEMS_USER", "FEMS_KEY")   # character(0) to manage them in the Connect UI instead
   tests     <- c("sun", "hourly", "rx_flag", "climatology", "quality", "tooltips", "ui",
                  "fems_retry", "station_cache")
+  git_exe   <- ""        # path to git.exe if R can't find git (e.g. "C:/Program Files/Git/cmd/git.exe")
   must_exclude <- c("^\\.Renviron$", "^CLAUDE\\.md$", "^tests/", "^docs/", "^scripts/", "^archive/",
                     "^\\.git/", "^\\.Rproj\\.user/", "^\\.Rhistory$", "^\\.RData$", "^_send/")
   pkgs <- c("shiny", "bslib", "leaflet", "plotly", "htmltools", "httr", "jsonlite", "dplyr", "tibble")
 
   .T <- .test_open("deploy")
-  git <- function(...) suppressWarnings(tryCatch(system2("git", c(...), stdout = TRUE, stderr = TRUE),
+  # R started from RStudio often doesn't have git on its PATH even when the
+  # command prompt does, so look in the usual Windows install places too.
+  find_git <- function() {
+    cand <- c(git_exe, Sys.which("git"),
+              file.path(c(Sys.getenv("ProgramFiles"), Sys.getenv("ProgramFiles(x86)"),
+                          file.path(Sys.getenv("LOCALAPPDATA"), "Programs")),
+                        "Git", "cmd", "git.exe"))
+    cand <- cand[nzchar(cand) & file.exists(cand)]
+    if (length(cand)) normalizePath(cand[1], winslash = "/") else ""
+  }
+  git_bin <- find_git()
+  git <- function(...) suppressWarnings(tryCatch(system2(git_bin, c(...), stdout = TRUE, stderr = TRUE),
                                                  error = function(e) structure(character(0), status = 127)))
   git_ok <- function(out) is.null(attr(out, "status")) || attr(out, "status") == 0
 
@@ -70,8 +83,14 @@ local({
 
     # ---- G. git --------------------------------------------------------------------------
     .section("G. Git")
+    if (!nzchar(git_bin)) {
+      .check("G1 git found from R", FALSE,
+             "R can't find git. In a command prompt run `where git`, then set git_exe at the top of scripts/deploy.R to that path")
+      stop("git not found; can't check what you're deploying")
+    }
     br <- git("rev-parse", "--abbrev-ref", "HEAD")
-    .check("G1 git works here", git_ok(br) && length(br) == 1, paste(br, collapse = " "))
+    .check("G1 git works here", git_ok(br) && length(br) == 1,
+           if (git_ok(br)) git_bin else paste(git_bin, ":", paste(br, collapse = " ")))
     .check("G2 on branch main", identical(br, "main"), paste("on", paste(br, collapse = " ")))
     st <- git("status", "--porcelain")
     .check("G3 nothing uncommitted (git status is clean)", git_ok(st) && !length(st),
@@ -81,7 +100,7 @@ local({
       .check("G4 nothing unpushed (what you deploy is on GitHub)", identical(up, "0"),
              if (identical(up, "0")) "" else paste(up, "commit(s) not pushed: git push first"))
     } else .info("G4 unpushed commits", "no origin/main to compare with")
-    head_ <- git("log", "-1", shQuote("--format=%h %s (%ci)"))
+    head_ <- git("log", "-1", "--format=%h%x20%s%x20%x28%ci%x29")   # %x20 space, %x28/%x29 parens: no shell quoting needed
     .info("G5 deploying commit", paste(head_, collapse = " "))
 
     # ---- C. Connect account and deployment records ---------------------------------------------
@@ -172,13 +191,13 @@ local({
     n_fail <- sum(.T$results$status == "FAIL")
     .section("Deploy")
     if (n_fail) stop(n_fail, " check(s) failed; not deploying. Fix them and run again.")
-    if (dry_run) {
-      .info("D0 dry run", "all checks passed; set dry_run <- FALSE to deploy")
-    } else {
-      if (!interactive()) stop("deploying needs an interactive session (it asks you to confirm)")
-      ans <- readline(sprintf("All checks passed. Deploy '%s' to %s (%s)? Type the app name to confirm: ",
+    ans <- ""
+    if (!dry_run && interactive())
+      ans <- readline(sprintf("All checks passed. Deploy '%s' to %s (%s)? Type the app name to deploy, or press Enter to stop (dry run): ",
                               app_name, server, if (exists("same") && nrow(same)) "update" else "new app"))
-      if (!identical(trimws(ans), app_name)) stop("not confirmed; nothing deployed")
+    if (!identical(trimws(ans), app_name)) {
+      .info("D0 dry run", if (nzchar(trimws(ans))) "that wasn't the app name; nothing deployed" else "all checks passed; nothing deployed")
+    } else {
       .say("  deploying ", length(files), " files ...")
       ok <- rsconnect::deployApp(appDir = ".", appFiles = files, appName = app_name, appTitle = app_title,
                                  account = account, server = server_name,
