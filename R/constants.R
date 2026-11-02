@@ -28,6 +28,16 @@ RX_VARS <- data.frame(
   step       = c(1, 1, 1, 5, 0.01, 10),
   stringsAsFactors = FALSE)
 
+# Starting prescription shown before presets exist (v0.1). DRAFT example
+# values, not a recommendation; labelled as an example in the UI.
+RX_EXAMPLE <- data.frame(
+  var = c("temperature", "relativeHumidity", "windSpeed", "windDirection", "precipitation", "solarRadiation"),
+  on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
+  min = c(40, 20, 2, 180, 0, 0),
+  max = c(85, 55, 15, 270, 0, 1300),
+  stringsAsFactors = FALSE)
+RX_DEBOUNCE_MS <- 400   # wait this long after the last edit before recomputing
+
 # ---- hourly table --------------------------------------------------------------
 # Value columns carried from the weather download into the hourly table.
 HOURLY_VALUE_COLS <- c("temperature", "relativeHumidity", "windSpeed", "windDirection",
@@ -68,3 +78,23 @@ STATIONS_FEATURED   <- file.path("data", "stations_featured.csv")
 BUNDLED_DIR         <- file.path("data", "stations_bundled")
 BUNDLED_MANIFEST    <- file.path(BUNDLED_DIR, "manifest.csv")
 FEMS_RECORD_START   <- as.Date("2005-01-01")   # start of a live download
+
+# ---- charts ----------------------------------------------------------------------
+# Sequential ramps for "% of hours in prescription" and "% reporting", low ->
+# high. The scale is always 0-100% so a colour means the same share for every
+# prescription. CHART_RAMP picks one; each ramp has a highlight colour for the
+# threshold outline that stands out against the ramp's high end.
+CHART_RAMPS <- list(
+  blues_v01 = list(colors = c("#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"),
+                   highlight = "#eb6834", label = "v0.1 blues (dataviz reference, steps 100-700)"),
+  blues     = list(colors = c("#f7fbff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"),
+                   highlight = "#eb6834", label = "Blues, white to navy (ColorBrewer)"),
+  ylgnbu    = list(colors = c("#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#253494", "#081d58"),
+                   highlight = "#eb6834", label = "Yellow-green-blue (ColorBrewer YlGnBu)"),
+  viridis   = list(colors = c("#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"),
+                   highlight = "#000000", label = "Viridis, dark purple to yellow"))
+CHART_RAMP <- "blues"
+CHART_SEQ <- CHART_RAMPS[[CHART_RAMP]]$colors
+CHART_HIGHLIGHT <- CHART_RAMPS[[CHART_RAMP]]$highlight
+CHART_CELL_GAP <- 2    # px between heatmap cells
+CLIM_HIGHLIGHT_PCT <- 50   # default outline threshold: cells at or above this % of hours in prescription
