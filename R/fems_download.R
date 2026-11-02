@@ -1,7 +1,15 @@
 # ==============================================================================
 # fems_download.R -- GraphQL replacements for download_nfdrs_data() and
 #                    download_weather_data()
-# Branch: fems-graphql-api
+# Copied from NFDRSChartBuilder (branch fems-graphql-api). Changed here
+# (PrescribedFirePlanner, 2026-11-02):
+#   * weather request padded one day each side in UTC, then trimmed to local
+#     dates. The UTC bounds used to drop 17:00-23:00 LST on the last day and
+#     add 17:00-23:00 of the day before the first (found by
+#     tests/test_fems_smoke.R).
+#   * weather gains obs_minute: the minute past the hour each observation was
+#     taken (from observation_time_lst). It is fixed per station (SAGUARO :08,
+#     BLOXHAM :29) and is never part of a key or a time calculation.
 #
 # DESIGN CONTRACT
 # ---------------
@@ -15,9 +23,9 @@
 #             tenHR_TL_FuelMoisture, hundredHR_TL_FuelMoisture,
 #             thousandHR_TL_FuelMoisture, woodyLFI_fuelMoisture,
 #             herbaceousLFI_fuelMoisture, gsi
-#   weather   temperature, relativeHumidity, precipitation, windSpeed,
-#             windDirection, gustSpeed, gustDirection, solarRadiation,
-#             vpd, hdw, dewpoint
+#   weather   obs_minute (int), temperature, relativeHumidity, precipitation,
+#             windSpeed, windDirection, gustSpeed, gustDirection,
+#             solarRadiation, vpd, hdw, dewpoint
 #
 # WHAT CHANGED VS THE CSV VERSION
 # -------------------------------
@@ -34,8 +42,8 @@
 #   * vpd comes from the API (vapor_press_def, in pascals) rather than being
 #     computed. dewpoint and hdw are still computed locally -- the API has
 #     no equivalent.
-#   * One request covers multiple stations (probe D), so only stations missing
-#     from the cache need fetching.
+#   * Stations are requested one at a time (see .fetch_by_station below):
+#     FEMS only allows local station time for a single station per request.
 # ==============================================================================
 
 source("R/fems_api.R")
@@ -102,6 +110,7 @@ source("R/fems_api.R")
       data {
         station_id
         display_hour_lst
+        observation_time_lst
         observation_type
         temperature
         relative_humidity
@@ -263,6 +272,12 @@ fems_download_nfdrs <- function(station_ids,
 # Weather
 #
 # Note the date arguments are DateTime! (with time and Z), not Date.
+#
+# weatherObs takes no dateTimeFormat argument, so its range is in UTC while
+# date/hour are labelled in station-local time. A UTC day is offset from the
+# local day (7 h at MST), so the request is padded by a day on each side and
+# the result trimmed to the requested LOCAL dates. Padding by a whole day
+# covers any offset under 24 h (FEMS stations span UTC-11 to UTC+10).
 # ------------------------------------------------------------------
 fems_download_weather <- function(station_ids,
                                   start_date,
@@ -289,8 +304,8 @@ fems_download_weather <- function(station_ids,
   raw <- fems_gql_paged(
     .Q_WEATHER,
     variables = list(
-      startDateTimeRange = paste0(format(as.Date(start_date)), "T00:00:00Z"),
-      endDateTimeRange   = paste0(format(as.Date(end_date)),   "T23:59:59Z"),
+      startDateTimeRange = paste0(format(as.Date(start_date) - 1), "T00:00:00Z"),
+      endDateTimeRange   = paste0(format(as.Date(end_date) + 1),   "T23:59:59Z"),
       stationIds         = ids,
       hasHistoricData    = "ALL",
       sortBy             = "observation_time",
@@ -312,6 +327,8 @@ fems_download_weather <- function(station_ids,
       date        = .lst_date(display_hour_lst),
       hour        = .lst_hour(display_hour_lst),
       record_type = toupper(as.character(observation_type)),
+      # Minute past the hour the observation was taken ("...T13:29:00..." -> 29).
+      obs_minute  = suppressWarnings(as.integer(substr(as.character(observation_time_lst), 15, 16))),
 
       temperature      = .as_num(temperature),
       relativeHumidity = .as_num(relative_humidity),
@@ -325,7 +342,8 @@ fems_download_weather <- function(station_ids,
       # API reports pascals; the app has always worked in kPa.
       vpd              = .as_num(vapor_press_def) / 1000
     ) %>%
-    filter(!is.na(date), !is.na(hour)) %>%
+    filter(!is.na(date), !is.na(hour),
+           date >= as.Date(start_date), date <= as.Date(end_date)) %>%
     distinct(station_id, date, hour, record_type, .keep_all = TRUE)
 
   # Derived variables the API does not supply.

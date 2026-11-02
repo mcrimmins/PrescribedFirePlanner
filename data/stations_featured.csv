@@ -1,0 +1,5 @@
+station_id,name,note,bundled,reviewed
+21202,SAGUARO,"Pima Co., AZ; Sonoran Desert near Tucson. MST all year. Shows the 2020-21 sensor averaging change.",TRUE,FALSE
+80802,BLOXHAM,"Leon Co., FL; near Tallahassee (PFTC area). Eastern time with DST.",TRUE,FALSE
+50507,ESTES PARK,"Larimer Co., CO; Front Range montane, 7892 ft. Mountain time with DST.",TRUE,FALSE
+44102,CRANE,"Mariposa Co., CA; Sierra Nevada conifer, 6634 ft. Pacific time with DST.",TRUE,FALSE

@@ -1,7 +1,8 @@
 # ==============================================================================
 # fems_api.R -- Minimal client for the FEMS Read-Only GraphQL API
 # Author: Mike Crimmins (crimmins@arizona.edu) / Claude
-# Branch: fems-graphql-api
+# Copied from NFDRSChartBuilder (branch fems-graphql-api). Changed here:
+#   2026-11-02  retry on 502/503/504/429 and connection failures; user agent.
 #
 # Endpoint : https://fems.fs2c.usda.gov/api/ext-climatology/graphql
 # Auth     : HTTP Basic -- username = FEMS account username,
@@ -69,19 +70,47 @@ fems_mask_key <- function(key) {
 }
 
 # ------------------------------------------------------------------
+# Retry policy (PrescribedFirePlanner, 2026-11-02)
+#
+# FEMS sometimes answers 502 Bad Gateway (seen 2026-11-02) or times out.
+# Those, plus 503/504 and 429 (rate limited), are retried after waiting
+# FEMS_RETRY_WAITS seconds. 401/403 (credentials), other 4xx/5xx and GraphQL
+# `errors` are NOT retried: repeating them cannot help.
+# ------------------------------------------------------------------
+FEMS_RETRY_WAITS  <- c(2, 5, 15)            # seconds before attempts 2, 3, 4
+FEMS_RETRY_STATUS <- c(429L, 502L, 503L, 504L)
+
+# Raised when FEMS is still unavailable after the last retry. The message is
+# written for users; Shiny code can catch it with
+#   tryCatch(..., fems_unavailable = function(e) conditionMessage(e))
+.fems_unavailable <- function(detail) {
+  structure(
+    class = c("fems_unavailable", "error", "condition"),
+    list(message = paste0("FEMS isn't responding right now. Try again in a few minutes. (",
+                          detail, ")"),
+         call = NULL))
+}
+
+# ------------------------------------------------------------------
 # Core POST
 #
 # Returns the parsed `data` object from the GraphQL response.
 # Throws with a useful message on HTTP failure or GraphQL-level errors
 # (GraphQL returns HTTP 200 with an `errors` array, so status alone is
 # not enough to tell success from failure).
+#
+# .post and .sleep exist so tests can replace the network and the clock
+# (tests/test_fems_retry.R); app code never passes them.
 # ------------------------------------------------------------------
 fems_gql <- function(query,
                      variables   = list(),
                      endpoint    = FEMS_ENDPOINT,
                      timeout_sec = 600,
                      simplify    = TRUE,
-                     verbose     = FALSE) {
+                     verbose     = FALSE,
+                     retry_waits = FEMS_RETRY_WAITS,
+                     .post       = httr::POST,
+                     .sleep      = Sys.sleep) {
 
   creds <- fems_credentials()
 
@@ -102,16 +131,36 @@ fems_gql <- function(query,
     message("  variables: ", vars_json)
   }
 
-  res <- httr::POST(
-    url    = endpoint,
-    config = httr::authenticate(creds$user, creds$key, type = "basic"),
-    httr::content_type_json(),
-    httr::accept_json(),
-    httr::user_agent("NFDRSChartBuilder/R (crimmins@arizona.edu)"),
-    httr::timeout(timeout_sec),
-    body   = body,
-    encode = "raw"
-  )
+  attempts <- length(retry_waits) + 1L
+  for (i in seq_len(attempts)) {
+    res <- tryCatch(
+      .post(
+        url    = endpoint,
+        config = httr::authenticate(creds$user, creds$key, type = "basic"),
+        httr::content_type_json(),
+        httr::accept_json(),
+        httr::user_agent("PrescribedFirePlanner/R (crimmins@arizona.edu)"),
+        httr::timeout(timeout_sec),
+        body   = body,
+        encode = "raw"
+      ),
+      error = function(e) e)
+
+    transient <- NULL
+    if (inherits(res, "error")) {
+      transient <- paste("connection failed:", conditionMessage(res))
+    } else if (httr::status_code(res) %in% FEMS_RETRY_STATUS) {
+      transient <- paste0("HTTP ", httr::status_code(res))
+    }
+    if (is.null(transient)) break
+
+    if (i == attempts) {
+      stop(.fems_unavailable(paste0(transient, " after ", attempts, " attempts")))
+    }
+    message("  FEMS ", transient, "; retrying in ", retry_waits[i], " s (attempt ",
+            i + 1L, " of ", attempts, ")")
+    .sleep(retry_waits[i])
+  }
 
   status <- httr::status_code(res)
   txt    <- httr::content(res, as = "text", encoding = "UTF-8")
@@ -199,6 +248,7 @@ fems_as_tibble <- function(rows) {
 #   root         : name of the top-level field, e.g. "nfdrsObs"
 #   per_page     : records per request
 #   progress     : optional function(page, page_count, rows_so_far)
+#   ...          : passed to fems_gql() (tests use it for .post/.sleep)
 # ------------------------------------------------------------------
 fems_gql_paged <- function(query,
                            variables,
@@ -209,7 +259,8 @@ fems_gql_paged <- function(query,
                            per_page_var = "perPage",
                            pause        = 0,
                            progress     = NULL,
-                           verbose      = TRUE) {
+                           verbose      = TRUE,
+                           ...) {
 
   collected <- list()
   page      <- 0
@@ -222,7 +273,7 @@ fems_gql_paged <- function(query,
     vars[[page_var]]     <- page
     vars[[per_page_var]] <- per_page
 
-    d    <- fems_gql(query, vars, simplify = TRUE)
+    d    <- fems_gql(query, vars, simplify = TRUE, ...)
     node <- d[[root]]
 
     if (is.null(node)) {
