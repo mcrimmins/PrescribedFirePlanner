@@ -4,3 +4,5 @@
 .Ruserdata
 .Renviron
 tests/logs/
+# rsconnect deployment records (rewritten on every deploy)
+rsconnect/

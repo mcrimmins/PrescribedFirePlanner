@@ -4,3 +4,6 @@ tests
 archive
 docs
 scripts
+.Rhistory
+.RData
+.Ruserdata
