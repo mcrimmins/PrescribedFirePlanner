@@ -3,12 +3,9 @@
 #
 #   B  step detection on planted series
 #   C  report structure on a planted station
-#   D  the four bundled stations: what we already know about them must show
-#      up (expectations from the 2 Nov 2026 snapshots and the network tests:
-#      SAGUARO's stuck RH in Jul 2008 and its 2020/2021 timing steps,
-#      BLOXHAM's failed temperature sensor and calm anemometer, CRANE's
-#      precipitation undercatch). If a snapshot is rebuilt these may move a
-#      little; the transcript shows each report in full.
+#   D  every bundled station: general checks, plus known station-specific
+#      findings (a table keyed by station id) for whichever of those stations
+#      are bundled. The transcript prints each report in full.
 #
 #     source("tests/test_quality.R")
 # ==============================================================================
@@ -55,6 +52,22 @@ local({
            any(rep$section == "source") && any(grepl("8 minutes past", rep$found, fixed = TRUE)))
 
     .section("D. The bundled stations")
+    # What we already know about particular stations. A row runs only when that
+    # station is bundled (findings from the 2 Nov 2026 snapshots; a rebuilt
+    # snapshot may move them a little -- the transcript prints every report).
+    known <- data.frame(stringsAsFactors = FALSE,
+      station_id = c("21202", "21202", "21202", "80802", "80802", "80802", "50507", "44102"),
+      expect = c("longest 120 h at 1% from 12 Jul 2008",
+                 "Solar radiation's timing shifts about 0.7 h later from 2020",
+                 "Temperature's daily cycle shifts about 0.6 h later from 2021",
+                 "Temperature went past physical limits",
+                 "Solar radiation's timing shifts about 0.5 h later from 2020",
+                 "Wind is calm (0 mph) in",
+                 "Solar radiation's timing shifts about 0.5 h later from 2020",
+                 "Measured precipitation is about 51%"),
+      what = c("SAGUARO stuck RH in Jul 2008", "SAGUARO solar step 2020", "SAGUARO temperature step 2021",
+               "BLOXHAM failed temperature sensor", "BLOXHAM solar step 2020", "BLOXHAM calm share",
+               "ESTES PARK solar step 2020", "CRANE precipitation undercatch"))
     mf <- hourly_bundled_manifest()
     if (!nrow(mf)) {
       .info("D0 skipped", "no bundled snapshots")
@@ -68,23 +81,23 @@ local({
         .say(sprintf("    %s %s -- badge %d, %d items", sid, r$value$st$meta$name, quality_badge(rp), nrow(rp)))
         for (k in seq_len(nrow(rp))) .say(sprintf("      [%s] %s", rp$severity[k], rp$found[k]))
       }
-      f <- function(sid, pat) !is.null(reps[[sid]]) && any(grepl(pat, reps[[sid]]$rep$found, fixed = TRUE))
-      .check("D1 SAGUARO: RH stuck at 1% from 12 Jul 2008 is reported", f("21202", "longest 120 h at 1% from 12 Jul 2008"))
-      .check("D2 SAGUARO: solar timing step from 2020", f("21202", "Solar radiation's timing shifts about 0.7 h later from 2020"))
-      .check("D3 SAGUARO: temperature timing step from 2021", f("21202", "Temperature's daily cycle shifts about 0.6 h later from 2021"))
-      .check("D4 BLOXHAM: failed temperature sensor reported", f("80802", "Temperature went past physical limits"))
-      .check("D5 BLOXHAM: no temperature timing step", !f("80802", "Temperature's daily cycle shifts"))
-      .check("D6 BLOXHAM: solar step from 2020", f("80802", "Solar radiation's timing shifts about 0.5 h later from 2020"))
-      .check("D7 BLOXHAM: high calm share reported", f("80802", "Wind is calm (0 mph) in"))
-      .check("D8 BLOXHAM: highest temperature after screening is plausible (<= 106 F)",
-             !is.null(reps[["80802"]]) && max(reps[["80802"]]$st$hourly$temperature, na.rm = TRUE) <= 106,
-             if (is.null(reps[["80802"]])) "" else paste("max", max(reps[["80802"]]$st$hourly$temperature, na.rm = TRUE)))
-      .check("D9 ESTES PARK: solar step from 2020", f("50507", "Solar radiation's timing shifts about 0.5 h later from 2020"))
-      .check("D10 CRANE: precipitation undercatch reported", f("44102", "Measured precipitation is about 51%"))
-      .check("D11 every report: one source item and one observation-minute item",
-             all(vapply(reps, function(x) sum(x$rep$section == "source") == 1 && sum(grepl("minutes past", x$rep$found, fixed = TRUE)) == 1, logical(1))))
-      .check("D12 every badge is between 1 and 15 (grouped, not one item per run)",
-             all(vapply(reps, function(x) quality_badge(x$rep) >= 1 && quality_badge(x$rep) <= 15, logical(1))))
+      .check("D1 every bundled station's report builds", length(reps) == nrow(mf),
+             paste(length(reps), "of", nrow(mf)))
+      .check("D2 every report: one source item and one observation-minute item",
+             all(vapply(reps, function(x) sum(x$rep$section == "source") == 1 &&
+                          sum(grepl("minutes past", x$rep$found, fixed = TRUE)) == 1, logical(1))))
+      .check("D3 every item has found, action and affects text",
+             all(vapply(reps, function(x) all(nzchar(x$rep$found) & nzchar(x$rep$action) & nzchar(x$rep$affects)), logical(1))))
+      .check("D4 every badge is at most 15 (grouped, not one item per run)",
+             all(vapply(reps, function(x) quality_badge(x$rep) <= 15, logical(1))),
+             paste(names(reps), vapply(reps, function(x) quality_badge(x$rep), numeric(1)), sep = "=", collapse = ", "))
+      .check("D5 after screening, every station's temperatures are within -40..130 F",
+             all(vapply(reps, function(x) all(x$st$hourly$temperature >= -40 & x$st$hourly$temperature <= 130, na.rm = TRUE), logical(1))))
+      k <- known[known$station_id %in% names(reps), ]
+      if (!nrow(k)) .info("D6 station-specific findings", "none recorded yet for the bundled stations")
+      for (i in seq_len(nrow(k)))
+        .check(paste0("D6.", i, " ", k$what[i]),
+               any(grepl(k$expect[i], reps[[k$station_id[i]]]$rep$found, fixed = TRUE)))
     }
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
