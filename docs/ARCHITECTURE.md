@@ -193,5 +193,13 @@ The network-free tests can also run in Claude's container first, but Mike's run 
    `climatology.R`, plus `test_sun.R`, `test_hourly.R`, `test_rx_flag.R`, `test_climatology.R`, `test_quality.R` (no network;
    the hourly, climatology and quality tests also run the real bundled snapshots). Still to do: switch the network tests from
    their own copies in `tests/helpers.R` to the `R/` functions.
-3. `tooltips.R`, `plots.R`, the four modules (station, quality, rx, climatology) and `app.R` for v0.1; run locally.
+3. **v0.1 app (written 2026-11-02, pending Mike's run):** `tooltips.R`, `plots.R`, the four modules and `app.R`, plus
+   `test_tooltips.R` and `test_ui.R` (the UI evaluated from `app.R`, and `shiny::testServer()` runs of the prescription and climatology
+   modules). Also checked in headless Chromium: loading from a featured button and from the map popup, the number-box/slider
+   sync, the inline messages, the clock toggle, hover text, and the Data quality and Table views.
+   - The station module adds `st$report` (from `quality_report()`) at load, so the badge and the tab share one report.
+   - After a load the app switches to Climatology; the sidebar badge opens Data quality.
+   - Heatmap hours run top to bottom (midnight at the top), on a fixed 0–100% blue scale (`CHART_SEQ`).
+   - The starting prescription is `RX_EXAMPLE` in `constants.R`, labelled "an example, not a recommendation", until presets exist.
+   - Needs `shiny`, `bslib`, `leaflet` and `plotly` (all namespaced except shiny and bslib, which `app.R` attaches).
 4. First deploy to Connect with `deployApp(appName = ...)` once the app name and URL are decided.

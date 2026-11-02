@@ -1,4 +1,4 @@
-# CLAUDE.md — PrescribedFirePlanner
+# CLAUDE.md — PrescribedFirePlanner (app name: Prescribed Fire Weather Explorer, "RxWx")
 
 R Shiny training tool for the Prescribed Fire Training Center: how often, and when, a station's weather falls inside a
 burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimmins/PrescribedFirePlanner`.
@@ -33,7 +33,7 @@ burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimm
   `hour_clock` and `time_clock` are display-only columns for the clock-time toggle; never flag or aggregate on clock time unless
   the toggle asks for it, and never feed clock time back into the data.
 - **A loaded station is a list, not a data frame:** `st <- hourly_load_station(id)` gives `st$meta`, `st$hourly`, `st$qc_log`,
-  `st$grid_added`, `st$source`. Pass `st` around. Don't keep metadata in attributes, because data-frame subsetting drops them.
+  `st$grid_added`, `st$source`; the station module adds `st$report` (the quality report) at load. Pass `st` around. Don't keep metadata in attributes, because data-frame subsetting drops them.
 - **Single-number conditions use `if`, never `ifelse()`:** `ifelse()` with a length-1 test returns one value, which then gets
   recycled over every hour (this was a real bug in `.rx_in_sector()`, caught by `test_rx_flag.R`).
 - **Screening runs before flagging:** `hourly_qc()` (lenient) sets clear sensor faults to `NA` and logs them; screened hours
@@ -87,12 +87,20 @@ burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimm
   Check UI shape by evaluating only the `ui <- ...` expression.
 - After a surgical rewrite, prove the untouched regions are byte-identical (`git show HEAD:<file>`) rather than asserting it.
 
+## Branding
+- The app is the **Prescribed Fire Weather Explorer** (RxWx); the repo stays `PrescribedFirePlanner`.
+- Banner: `www/RxWxLogo_banner.png` (left) and `www/UAlogo_banner.png` (right) are small cropped copies of `www/RxWxLogo_compact.png`
+  and `www/UAlogo.jpg`; the originals are untouched. Logos display at 52 px (RxWx) and 40 px (UA), so the RxWx tagline is readable; the banner is about 68 px. Banner PNGs are exported at 3x for sharp text. Theme primary is the logo blue, `#0b5e80`.
+- File names are **case-sensitive on Posit Connect** (Linux) but not on Windows: reference `www/` files by their exact names.
+  `test_ui.R` (B8) checks every image the UI uses against `list.files("www")`.
+
 ## Data files
 - `data/station_metadata_FEMS3_042225.csv`: station list, coordinates (used for the map and sun times).
 - `data/stations_bundled/`: raw FEMS weather snapshots for the bundled stations (`<id>.rds`, xz) plus `manifest.csv`, built
   by `scripts/build_station_cache.R` and **committed to git**. The app only reads them; screening and quality checks run at load
   time, so never bake screening into a snapshot. To change the list: edit `bundled` in `stations_featured.csv`, rerun the
-  script, run `test_station_cache.R`, commit, redeploy. Bundled to start: 21202, 80802, 50507, 44102.
+  script, run `test_station_cache.R`, commit, redeploy. Bundled (from 2 Nov 2026, after partner feedback): FLAGSTAFF 20209 (AZ), HAYWARD 470804 (WI), OLUSTEE 81301 (FL),
+  REDDING 40611 (CA). The first set (SAGUARO, BLOXHAM, ESTES PARK, CRANE) is still used by the network tests.
 - `data/stations_featured.csv`, `data/rx_presets.csv`: drafted by Claude, each row with `reviewed = FALSE`
   until Mike or PFTC check it. The UI marks unreviewed rows. Never mark a row reviewed without Mike saying so.
 - Synthetic forecast error sizes are assumptions until reviewed. Forecast views are always watermarked "SYNTHETIC — FOR TRAINING ONLY."

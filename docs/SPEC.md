@@ -1,4 +1,6 @@
-# PrescribedFirePlanner — v1 spec
+# Prescribed Fire Weather Explorer (RxWx) — v1 spec
+
+*Repository: PrescribedFirePlanner.*
 
 *Draft 2026-11-02. Mike Crimmins (University of Arizona) for the Prescribed Fire Training Center (PFTC).
 Builds on NFDRSChartBuilder; conventions in `docs/carryover_from_NFDRSChartBuilder.md`.*
@@ -17,8 +19,8 @@ It will be developed iteratively with PFTC feedback and could become operational
 
 ## Inputs
 - **Station:** one at a time. A curated list of featured stations is offered first, and any FEMS RAWS station can be found by search.
-  Four stations are **bundled** with the app and load instantly, with no FEMS download: SAGUARO (AZ), BLOXHAM (FL),
-  ESTES PARK (CO) and CRANE (CA). The list changes with partner feedback.
+  Four stations are **bundled** with the app and load instantly, with no FEMS download: FLAGSTAFF (AZ), HAYWARD (WI),
+  OLUSTEE (FL) and REDDING (CA), chosen with partner feedback. The list changes with feedback.
 - **Prescription:** loaded from an **editable preset**. Each variable has an optional min and max (inclusive; blank = no limit):
   temperature, RH, 20-ft wind speed, wind-direction sector, precipitation and solar radiation.
   Precipitation is limited per hour (default max 0, i.e. no rain that hour); solar radiation in W/m².
@@ -30,7 +32,7 @@ It will be developed iteratively with PFTC feedback and could become operational
   and a forecast issue date/time for the synthetic forecast.
 
 ## Layout
-A bslib page with tabs along the top (**Station · Data quality · Climatology · Past event · Same dates · Forecast · About**) and one sidebar
+A bslib page with tabs along the top (**Station · Climatology · Past event · Same dates · Forecast · Data quality · About**) and one sidebar
 that stays the same on every tab. Before a station is loaded, the sidebar has search and the featured list. Afterwards it shows
 the station, the preset menu and the prescription controls. Each limit has an on/off checkbox, min and max **number boxes**
 kept in sync with a two-handle **range slider**, and inline messages for out-of-range or min > max entries. There's also a
@@ -69,7 +71,8 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   - **Hour × day-of-year chart** (WeatherSpark style, the main view): hour of day on the vertical axis and Jan–Dec across.
     Each cell is colored by the chance that hour is in prescription, smoothed with a centered ±7-day window.
     Overlays: sunrise, sunset and civil twilight lines for the station's location, the preset's ignition period,
-    and a 50% contour outlining the climatological window.
+    and an orange outline around cells at or above a settable threshold (default 50% of hours), marking the climatological
+    window by outline as well as colour. Colour ramp: one hue, white to navy (ColorBrewer Blues), fixed 0–100%.
   - **Per-variable panels on the same axes:** the hourly climatology of each constrained variable (e.g. median RH)
     with the prescription limits drawn as contour lines, so trainees can see which limit closes the window, at which hours and in which season.
     Wind direction is shown as the % of hours in the allowed sector.
