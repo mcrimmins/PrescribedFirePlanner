@@ -34,9 +34,10 @@ It will be developed iteratively with PFTC feedback and could become operational
 ## Layout
 A bslib page with tabs along the top (**Station · Climatology · Past event · Same dates · Forecast · Data quality · About**) and one sidebar
 that stays the same on every tab. Before a station is loaded, the sidebar has search and the featured list. Afterwards it shows
-the station, the preset menu and the prescription controls. Each limit has an on/off checkbox, min and max **number boxes**
-kept in sync with a two-handle **range slider**, and inline messages for out-of-range or min > max entries. There's also a
-wind-direction sector, ignition hours and minimum window. Changing a limit recomputes the flags and redraws without downloading again (debounced).
+the station, the preset menu and the prescription controls, as two sections (Station, Prescription) separated by a rule.
+The sidebar is kept compact: each limit is an on/off checkbox and one two-handle **range slider** (no number boxes); a
+handle at the end of its slider means no limit on that side. The wind-direction sector is two 16-point compass menus
+(from, to; clockwise, may wrap through north). Inline messages explain any problem. Ignition hours and minimum window follow. Changing a limit recomputes the flags and redraws without downloading again (debounced).
 **Date controls live in their own tabs**, because each tab's dates mean something different. Choices carry forward one way as
 defaults: a Past event range becomes the starting window for Same dates, and its start becomes the default Forecast issue time.
 Every chart's subtitle states the dates it shows. The **Station** tab is a Leaflet map of every FEMS station, with featured stations

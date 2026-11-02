@@ -32,7 +32,7 @@
 
 mod_station_sidebar_ui <- function(id) {
   ns <- shiny::NS(id)
-  shiny::tagList(shiny::uiOutput(ns("card")))
+  shiny::tagList(shiny::div(class = "sb-head", "Station"), shiny::uiOutput(ns("card")))
 }
 
 mod_station_map_ui <- function(id) {
@@ -60,7 +60,7 @@ mod_station_server <- function(id) {
     output$card <- shiny::renderUI({
       st <- current()
       pick <- shiny::div(
-        shiny::selectizeInput(ns("pick"), "Station", width = "100%",
+        shiny::selectizeInput(ns("pick"), NULL, width = "100%",
                               choices = c(stats::setNames("", ""), choice_vec),
                               selected = if (is.null(st)) "" else st$meta$station_id,
                               options = list(placeholder = "Search by name or ID")),

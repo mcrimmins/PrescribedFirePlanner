@@ -107,7 +107,8 @@ burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimm
 
 ## Layout (summary of `docs/SPEC.md`)
 Tabs: Station (Leaflet map) · Climatology · Past event · Same dates · Forecast · About, with one persistent sidebar:
-station, preset, and limit controls (checkbox + min/max number boxes kept in sync with a range slider, inline validation).
+station, then a rule, then the prescription: checkbox + one range slider per limit (no number boxes; a handle at the
+slider's end = no limit), wind sector as two compass menus, inline validation.
 Date controls live in their own tabs and carry forward one way as defaults. Every chart is plotly with hover tooltips.
 
 ## Deploy and git (carryover §5)

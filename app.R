@@ -22,8 +22,20 @@ for (f in c("constants", "fems_download", "sun", "hourly", "quality", "rx", "cli
 
 app_css <- "
 .station-card { border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: .5rem .6rem; }
-.rx-var .form-group { margin-bottom: .25rem; }
-.rx-var .checkbox { margin-bottom: .25rem; }
+/* sidebar: compact, two clearly separated sections */
+.bslib-sidebar-layout > .sidebar > .sidebar-content { gap: .5rem; padding-top: .75rem; }
+.sb-head { font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--bs-secondary-color); margin-bottom: .35rem; }
+.sb-rule { margin: .4rem 0 .2rem; border-top: 1px solid var(--bs-border-color); opacity: 1; }
+.rx-note { font-size: .75rem; color: var(--bs-secondary-color); line-height: 1.3; }
+.rx-var { padding: .1rem 0 .2rem; }
+.rx-var .form-group, .rx-var .shiny-input-container { margin-bottom: 0; }
+.rx-var .checkbox { margin: 0; }
+.rx-var .checkbox label { font-size: .875rem; font-weight: 500; }
+.rx-body { padding-left: 1.5rem; }
+.rx-body .irs { margin-top: .15rem; }
+.rx-var + .rx-var { margin-top: .1rem; }
+.rx-body .irs--shiny .irs-min, .rx-body .irs--shiny .irs-max { display: none; }
+.rx-sector select { font-size: .8rem; padding: .15rem 1.6rem .15rem .4rem; }
 .dq-item { border-left: 4px solid var(--bs-border-color); padding: .5rem .75rem; margin-bottom: .6rem; background: var(--bs-body-bg); }
 .dq-affects { border-left-color: var(--bs-warning); }
 .coming-soon { max-width: 46rem; }
@@ -56,6 +68,7 @@ ui <- page_navbar(
   sidebar = sidebar(
     width = 330,
     mod_station_sidebar_ui("station"),
+    tags$hr(class = "sb-rule"),
     mod_rx_ui("rx")),
   nav_panel("Station", value = "station", mod_station_map_ui("station")),
   nav_panel("Climatology", value = "climatology", mod_climatology_ui("clim")),

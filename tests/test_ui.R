@@ -52,14 +52,22 @@ local({
     }
     walk(htmltools::tagQuery(ui)$allTags())
     need <- c("main_nav", "station-card", "station-map",
-              paste0("rx-", c(outer(c("on_", "min_", "max_"), RX_VARS$var, paste0))),
+              paste0("rx-on_", RX_VARS$var),
               paste0("rx-sl_", RX_VARS$var[RX_VARS$kind == "linear"]),
+              paste0("rx-", c("min_", "max_"), "windDirection"),
               paste0("rx-msg_", RX_VARS$var),
               "clim-title", "clim-controls", "clim-heat", "clim-tbl", "clim-caption", "clim-outline_on", "clim-outline_pct",
               "quality-items", "quality-coverage", "quality-log")
     miss <- setdiff(need, ids)
     .check("B3 every input/output id the server uses is in the UI", !length(miss), paste("missing:", paste(miss, collapse = ", ")))
     .check("B4 no slider for the circular wind direction", !"rx-sl_windDirection" %in% ids)
+    lin <- RX_VARS$var[RX_VARS$kind == "linear"]
+    .check("B4b no number boxes for the linear variables (sliders only)",
+           !any(paste0("rx-", c(outer(c("min_", "max_"), lin, paste0))) %in% ids))
+    .check("B4c the sidebar has a Station and a Prescription heading with a rule between",
+           all(c("Station", "Prescription") %in% unlist(htmltools::tagQuery(ui)$find(".sb-head")$selectedTags() |>
+                                                        lapply(function(t) as.character(t$children[[1]])))) &&
+             length(htmltools::tagQuery(ui)$find("hr.sb-rule")$selectedTags()) == 1)
     dup <- unique(ids[duplicated(ids)])
     .check("B5 no duplicate ids", !length(dup), paste(dup, collapse = ", "))
     tabs <- c("station", "quality", "climatology", "past", "same", "forecast", "about")
@@ -78,36 +86,42 @@ local({
            grepl("<title>Prescribed Fire Weather Explorer</title>", as.character(htmltools::renderTags(ui)$head), fixed = TRUE) ||
              grepl("Prescribed Fire Weather Explorer", html, fixed = TRUE))
     .check("B7 renders to HTML; example values are labelled as an example",
-           grepl("an example, not a recommendation", html, fixed = TRUE))
+           grepl("Example values, not a recommendation", html, fixed = TRUE))
 
     .section("C. Prescription module (testServer)")
-    ex_on <- RX_EXAMPLE[RX_EXAMPLE$on, ]
+    ex_on <- .rx_example_limits()
     shiny::testServer(mod_rx_server, {
       args <- list()
       for (i in seq_len(nrow(RX_EXAMPLE))) {
         v <- RX_EXAMPLE$var[i]
         args[[paste0("on_", v)]] <- RX_EXAMPLE$on[i]
-        args[[paste0("min_", v)]] <- RX_EXAMPLE$min[i]; args[[paste0("max_", v)]] <- RX_EXAMPLE$max[i]
+        if (RX_VARS$kind[RX_VARS$var == v] == "linear") args[[paste0("sl_", v)]] <- c(RX_EXAMPLE$min[i], RX_EXAMPLE$max[i])
+        else { args[[paste0("min_", v)]] <- as.character(RX_EXAMPLE$min[i]); args[[paste0("max_", v)]] <- as.character(RX_EXAMPLE$max[i]) }
       }
       do.call(session$setInputs, args)
       session$elapse(RX_DEBOUNCE_MS + 100)
       r0 <- session$returned()
       .check("C1 starts as the example prescription", identical(r0$var, ex_on$var) && identical(r0$min, ex_on$min) &&
                identical(r0$max, ex_on$max))
-      session$setInputs(max_relativeHumidity = 30); session$elapse(RX_DEBOUNCE_MS + 100)
-      .check("C2 a typed value is used", session$returned()$max[session$returned()$var == "relativeHumidity"] == 30)
-      session$setInputs(min_temperature = 90); session$elapse(RX_DEBOUNCE_MS + 100)
-      .check("C3 an invalid entry (min above max) keeps the last valid prescription",
-             session$returned()$min[session$returned()$var == "temperature"] == 40)
-      .check("C4 ... and shows a plain-words message",
-             grepl("minimum is above the maximum", paste(unlist(output$msg_temperature), collapse = " "), fixed = TRUE))
-      session$setInputs(min_temperature = 40, max_temperature = NA); session$elapse(RX_DEBOUNCE_MS + 100)
+      .check("C1b precipitation 0-0: the handle at the slider's start means no lower limit, max stays 0",
+             is.na(r0$min[r0$var == "precipitation"]) && r0$max[r0$var == "precipitation"] == 0)
+      session$setInputs(sl_relativeHumidity = c(20, 30)); session$elapse(RX_DEBOUNCE_MS + 100)
+      .check("C2 a slider move is used", session$returned()$max[session$returned()$var == "relativeHumidity"] == 30)
+      m <- RX_VARS[RX_VARS$var == "temperature", ]
+      session$setInputs(sl_temperature = c(40, m$slider_max)); session$elapse(RX_DEBOUNCE_MS + 100)
       rr <- session$returned()
-      .check("C5 a blank box means no limit on that side", is.na(rr$max[rr$var == "temperature"]) && rr$min[rr$var == "temperature"] == 40)
-      session$setInputs(on_windDirection = TRUE, min_windDirection = 315, max_windDirection = 45); session$elapse(RX_DEBOUNCE_MS + 100)
+      .check("C3 a handle at the slider's end means no limit on that side",
+             is.na(rr$max[rr$var == "temperature"]) && rr$min[rr$var == "temperature"] == 40)
+      session$setInputs(sl_temperature = c(m$slider_min, m$slider_max)); session$elapse(RX_DEBOUNCE_MS + 100)
+      .check("C4 the full range is no limit at all, and says so",
+             !"temperature" %in% rx_constrained(session$returned()) &&
+               grepl("full range", paste(unlist(output$msg_temperature), collapse = " "), fixed = TRUE))
+      session$setInputs(sl_temperature = c(40, 85)); session$elapse(RX_DEBOUNCE_MS + 100)
+      session$setInputs(on_windDirection = TRUE, min_windDirection = "315", max_windDirection = "45"); session$elapse(RX_DEBOUNCE_MS + 100)
       rr <- session$returned()
-      .check("C6 turning on a wrapping wind sector (315 -> 45) works", "windDirection" %in% rr$var &&
-               rr$min[rr$var == "windDirection"] == 315)
+      .check("C5 turning on a wrapping wind sector (NW 315 -> NE 45) works", "windDirection" %in% rr$var &&
+               rr$min[rr$var == "windDirection"] == 315 && rr$max[rr$var == "windDirection"] == 45)
+      .check("C6 the compass menus offer 16 points", length(.RX_COMPASS) == 16 && all(c("315", "45", "180", "270") %in% .RX_COMPASS))
       session$setInputs(on_temperature = FALSE); session$elapse(RX_DEBOUNCE_MS + 100)
       .check("C7 unticking a variable removes its limit", !"temperature" %in% session$returned()$var)
     })
