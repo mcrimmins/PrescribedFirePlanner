@@ -86,3 +86,96 @@ plot_coverage_grid <- function(cov, labels) {
     plotly::config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoom2d", "pan2d", "select2d", "lasso2d",
                                                                     "autoScale2d", "zoomIn2d", "zoomOut2d", "resetScale2d"))
 }
+
+# ---- Past event: stacked hourly traces ----------------------------------------------
+# flagged: rx_flag() output for the event, in time order. text: one tooltip per
+# row (tip_event_hours). nights: sun_nights() spans (hours from the first
+# date's midnight, LST). clock_shift: hours to add for clock time (0 for LST).
+# Top strip: each hour coloured in / out / not known. Below: one panel per
+# variable; the prescription range shaded, markers blue when the hour is in
+# prescription, orange when this limit failed, grey otherwise.
+plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, clock_shift = 0) {
+  n <- nrow(flagged)
+  base <- as.POSIXct(format(min(flagged$date)), tz = "UTC")
+  fmt <- function(t) format(t, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  x <- if (clock) format(flagged$time_clock, "%Y-%m-%d %H:%M:%S")
+       else fmt(as.POSIXct(format(flagged$date), tz = "UTC") + flagged$hour * 3600)
+  vars <- rx_constrained(rx)
+  k <- length(vars_show)
+  # vertical layout: strip (0.45 units) then one unit per variable, top to bottom
+  units <- c(0.45, rep(1, k)); gap <- 0.06
+  tot <- sum(units) + gap * k
+  top <- 1 - c(0, cumsum(units + gap))[seq_along(units)] / tot
+  bottom <- top - units / tot
+  yname <- function(i) if (i == 1) "y" else paste0("y", i)
+  ylay  <- function(i) if (i == 1) "yaxis" else paste0("yaxis", i)
+
+  st <- ifelse(is.na(flagged$in_rx), "unknown", ifelse(flagged$in_rx, "in", "out"))
+  p <- plotly::plot_ly()
+  p <- plotly::add_bars(p, x = x, y = rep(1, n), yaxis = "y", text = text, hoverinfo = "text", textposition = "none",
+                        marker = list(color = c(`in` = CHART_IN_RX, out = CHART_OUT, unknown = "#ffffff")[st],
+                                      line = list(color = ifelse(st == "unknown", "#c3ccd3", "rgba(0,0,0,0)"), width = 1)),
+                        showlegend = FALSE)
+  shapes <- list()
+  lay <- list()
+  lay[["yaxis"]] <- .plot_axis(domain = c(bottom[1], top[1]), range = c(0, 1), showticklabels = FALSE,
+                               title = list(text = "In Rx", font = list(size = 11, color = "#555555")))
+  for (i in seq_len(k)) {
+    v <- vars_show[i]; ax <- i + 1
+    m <- RX_VARS[RX_VARS$var == v, ]
+    y <- flagged[[v]]
+    pass <- if (v %in% vars) flagged[[paste0("pass_", v)]] else rep(NA, n)
+    col <- ifelse(!is.na(flagged$in_rx) & flagged$in_rx, CHART_IN_RX,
+                  ifelse(!is.na(pass) & !pass, CHART_FAIL, CHART_OUT))
+    circ <- m$kind == "circular"
+    if (!circ) p <- plotly::add_lines(p, x = x, y = y, yaxis = yname(ax), line = list(color = "#9aa5ad", width = 1.2),
+                                      hoverinfo = "skip", showlegend = FALSE, connectgaps = FALSE)
+    p <- plotly::add_markers(p, x = x, y = y, yaxis = yname(ax), text = text, hoverinfo = "text",
+                             marker = list(color = col, size = if (circ) 6 else 5), showlegend = FALSE)
+    rng <- if (circ) c(0, 360) else {
+      r <- range(c(y, if (v %in% vars) c(rx$min[rx$var == v], rx$max[rx$var == v])), na.rm = TRUE)
+      if (!all(is.finite(r))) r <- c(m$slider_min, m$slider_max)
+      pad <- max(diff(r) * 0.08, m$step); c(max(m$slider_min, r[1] - pad), r[2] + pad)
+    }
+    if (v %in% vars) {
+      lo <- rx$min[rx$var == v]; hi <- rx$max[rx$var == v]
+      band <- function(a, b) list(type = "rect", xref = "paper", x0 = 0, x1 = 1, yref = yname(ax), y0 = a, y1 = b,
+                                  fillcolor = CHART_BAND, line = list(width = 0), layer = "below")
+      edge <- function(a) list(type = "line", xref = "paper", x0 = 0, x1 = 1, yref = yname(ax), y0 = a, y1 = a,
+                               line = list(color = CHART_IN_RX, width = 1, dash = "dot"), layer = "below")
+      if (circ) {
+        shapes <- c(shapes, if (lo <= hi) list(band(lo, hi)) else list(band(lo, 360), band(0, hi)), list(edge(lo), edge(hi)))
+      } else {
+        a <- if (is.na(lo)) rng[1] else lo; b <- if (is.na(hi)) rng[2] else hi
+        shapes <- c(shapes, list(band(a, b)), if (!is.na(lo)) list(edge(lo)), if (!is.na(hi)) list(edge(hi)))
+      }
+    }
+    lab <- if (v == "windSpeed") "Wind (mph)" else if (v == "relativeHumidity") "RH (%)" else
+           if (v == "windDirection") "Wind dir" else paste0(sub(" .*", "", m$label), " (", m$units, ")")
+    lay[[ylay(ax)]] <- .plot_axis(domain = c(bottom[ax], top[ax]), range = rng,
+                                  title = list(text = lab, font = list(size = 11, color = "#555555")),
+                                  showgrid = TRUE, gridcolor = "#eeeeee",
+                                  tickvals = if (circ) c(0, 90, 180, 270, 360) else NULL,
+                                  ticktext = if (circ) c("N", "E", "S", "W", "N") else NULL)
+  }
+  night <- lapply(seq_len(nrow(nights)), function(r)
+    list(type = "rect", xref = "x", yref = "paper", y0 = 0, y1 = 1,
+         x0 = fmt(base + (nights$from[r] + clock_shift) * 3600), x1 = fmt(base + (nights$to[r] + clock_shift) * 3600),
+         fillcolor = CHART_NIGHT, line = list(width = 0), layer = "below"))
+  xr <- c(fmt(base + (clock_shift - 0.5) * 3600),
+          fmt(base + (as.numeric(max(flagged$date) - min(flagged$date)) * 24 + 23.5 + clock_shift) * 3600))
+  lay$xaxis <- .plot_axis(type = "date", range = xr, fixedrange = FALSE, showgrid = TRUE, gridcolor = "#e6e6e6",
+                          dtick = 86400000, tickformat = "%a %d %b", ticklabelmode = "period", anchor = yname(k + 1),
+                          title = list(text = if (clock) "Clock time" else "Local standard time (LST); shaded: night",
+                                       font = list(size = 11, color = "#555555")))
+  lay$shapes <- c(night, shapes)
+  lay$bargap <- 0.08
+  lay$hovermode <- "closest"
+  lay$margin <- list(l = 70, r = 20, t = 10, b = 50)
+  lay$plot_bgcolor <- "rgba(0,0,0,0)"; lay$paper_bgcolor <- "rgba(0,0,0,0)"
+  lay$hoverlabel <- list(bgcolor = "white", bordercolor = "#cccccc", font = list(size = 13, color = "#222222"), align = "left")
+  p <- do.call(plotly::layout, c(list(p), lay))
+  plotly::config(p, displaylogo = FALSE,
+                 modeBarButtonsToRemove = c("select2d", "lasso2d", "autoScale2d", "zoomIn2d", "zoomOut2d"),
+                 toImageButtonOptions = list(format = "png", filename = "rx_past_event", scale = 2))
+}

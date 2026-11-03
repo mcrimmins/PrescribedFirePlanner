@@ -81,6 +81,24 @@ local({
       .say("    example: ", tc$text[tc$month == 4 & tc$hour == 14])
     }
 
+    .section("D2. Past event hour tooltips")
+    eh <- data.frame(date = as.Date("2024-03-12"), hour = c(14L, 15L, 16L, 17L), hour_clock = c(15L, 16L, 17L, 18L),
+                     time_clock = as.POSIXct("2024-03-12 15:00", tz = "America/Denver") + 0:3 * 3600,
+                     temperature = c(70, 90, 70, NA), relativeHumidity = c(30, 12, 30, 30), windSpeed = c(5, 5, 0, 5),
+                     windDirection = c(225, 225, 90, 10), precipitation = c(0, 0, 0.05, 0))
+    rxe <- rx_new(temperature = c(40, 85), relativeHumidity = c(20, 55))
+    te <- tip_event_hours(rx_flag(eh, rxe), rxe, obs_minute = 8)
+    .check("D2.1 time in LST with the observation minute", grepl("Tue 12 Mar 2024, 14:00 LST (read at :08)", te[1], fixed = TRUE), te[1])
+    .check("D2.2 an in-prescription hour says so", grepl("<b>In prescription</b>", te[1], fixed = TRUE))
+    .check("D2.3 an out hour names each failing limit with its value and limit",
+           grepl("temperature 90 \u00b0F (limit 40 \u00b0F to 85 \u00b0F)", te[2], fixed = TRUE) &&
+             grepl("RH 12% (limit 20% to 55%)", te[2], fixed = TRUE), te[2])
+    .check("D2.4 calm is labelled; rain is shown when it fell", grepl("(calm)", te[3], fixed = TRUE) && grepl("Rain 0.05 in/hr", te[3], fixed = TRUE))
+    .check("D2.5 a missing limited value: 'Not known: no data for temperature'", grepl("<b>Not known</b>: no data for temperature", te[4], fixed = TRUE), te[4])
+    .check("D2.6 wind direction in compass words", grepl("from SW (225\u00b0)", te[1], fixed = TRUE) && tip_compass(350) == "N" && tip_compass(10) == "N")
+    tcl <- tip_event_hours(rx_flag(eh, rxe), rxe, clock = TRUE)
+    .check("D2.7 clock-time labels", grepl("15:00 clock time", tcl[1], fixed = TRUE), tcl[1])
+
     .section("E. Map markers")
     ts <- tip_station("21202", "SAGUARO", 2264, "AZ", featured = TRUE, bundled = TRUE, note = "Sonoran Desert")
     .check("E1 station tooltip: name, id, state, elevation, bundled, note",

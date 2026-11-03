@@ -16,7 +16,7 @@ library(bslib)
 
 # Fixed order; every file namespaces its other packages (CLAUDE.md).
 for (f in c("constants", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
-            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology")) {
+            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event")) {
   source(file.path("R", paste0(f, ".R")))
 }
 
@@ -39,6 +39,9 @@ app_css <- "
 .dq-item { border-left: 4px solid var(--bs-border-color); padding: .5rem .75rem; margin-bottom: .6rem; background: var(--bs-body-bg); }
 .dq-affects { border-left-color: var(--bs-warning); }
 .coming-soon { max-width: 46rem; }
+/* by-limit tables: one line per cell, labels left, counts right */
+.tbl-limits th, .tbl-limits td { white-space: nowrap; }
+.tbl-limits td:nth-child(-n+2), .tbl-limits th:nth-child(-n+2) { text-align: left !important; }
 /* banner logos: sized so the RxWx tagline is readable; the navbar grows only as much as they need */
 .navbar .navbar-brand { display: flex; align-items: center; height: 52px; padding: 0; margin-right: 1.5rem; }
 .navbar .app-logo { display: block; height: 52px; width: auto; }
@@ -73,8 +76,7 @@ ui <- page_navbar(
     mod_rx_ui("rx")),
   nav_panel("Station", value = "station", mod_station_map_ui("station")),
   nav_panel("Climatology", value = "climatology", mod_climatology_ui("clim")),
-  nav_panel("Past event", value = "past",
-            coming("Past event", "Hour-by-hour conditions for a stretch of up to two weeks, with in-prescription hours highlighted and the limit that failed at each hour.")),
+  nav_panel("Past event", value = "past", mod_event_ui("event")),
   nav_panel("Same dates", value = "same",
             coming("Same dates, many years", "One window of the year (say 15 Mar to 15 Apr) shown for every year in the record, with hours in prescription counted per year.")),
   nav_panel("Forecast", value = "forecast",
@@ -105,6 +107,7 @@ server <- function(input, output, session) {
   rx <- mod_rx_server("rx")
   mod_quality_server("quality", station$st)
   mod_climatology_server("clim", station$st, rx)
+  mod_event_server("event", station$st, rx)
 
   # after a station loads, go to Climatology; the badge opens Data quality
   observeEvent(station$st(), {

@@ -14,6 +14,9 @@
 #   totals_display(summary, rx_vars)   -> list(main, by_limit) of display tables
 #       (main: months down; by_limit: a met row and an only-one-failing row per limit, months across)
 #   totals_csv_lines(x, meta, rx, years, hour_label, what)  -> lines for a CSV
+#   totals_event(flagged, rx_vars)      Past event: per day x measure + Total,
+#       with the longest in-prescription run (clim_runs)
+#   totals_event_display(), totals_event_csv_lines()  (daily or hourly CSV)
 #
 # Measures: in_rx (all limits met), pass_<var> (that limit met on its own),
 # only_<var> (misses the prescription only because of that limit).
@@ -120,21 +123,28 @@ totals_measure_label <- function(value) {
                 paste0(lab, ": misses only because of this limit")))
 }
 
-# x: totals_summary() (what = "summary") or totals_per_year() (what = "per_year").
-totals_csv_lines <- function(x, meta, source_detail, rx, years, hour_label, what = c("summary", "per_year")) {
-  what <- match.arg(what)
-  hdr <- c(
-    paste0("# Prescribed Fire Weather Explorer (RxWx) ", APP_VERSION, " -- hour totals, ",
-           if (what == "summary") "by month (typical year, range, total)" else "by year and month"),
+# Header lines shared by every CSV: they make a saved file explain itself.
+.totals_csv_header <- function(title, meta, source_detail, rx, period_line, hour_label, extra = character(0)) {
+  c(paste0("# Prescribed Fire Weather Explorer (RxWx) ", APP_VERSION, " -- ", title),
     paste0("# Station: ", meta$name, " (", meta$station_id, ")",
            if (!is.null(meta$state) && !is.na(meta$state)) paste0(", ", meta$state) else ""),
     paste0("# Data: ", source_detail, "; hourly RAWS weather from USDA Forest Service FEMS"),
-    paste0("# Years: ", years[1], "-", years[2]),
+    paste0("# ", period_line),
     paste0("# Prescription: ", totals_rx_text(rx)),
     paste0("# Hours: ", hour_label, ". Counts are hours. An hour is excluded when a limited variable is missing or was screened out."),
-    paste0("# Median year and range leave out a year-month with under ", TOTALS_COVERAGE_MIN,
-           "% of its hours usable (listed in years_left_out); those still count toward total_h."),
+    if (length(extra)) paste0("# ", extra),
     paste0("# Exported: ", format(Sys.time(), "%Y-%m-%d %H:%M %Z"), ". Training tool, not an operational planning product."))
+}
+.totals_csv_body <- function(d) utils::capture.output(utils::write.csv(d, row.names = FALSE, na = ""))
+
+# x: totals_summary() (what = "summary") or totals_per_year() (what = "per_year").
+totals_csv_lines <- function(x, meta, source_detail, rx, years, hour_label, what = c("summary", "per_year")) {
+  what <- match.arg(what)
+  hdr <- .totals_csv_header(
+    paste0("hour totals, ", if (what == "summary") "by month (typical year, range, total)" else "by year and month"),
+    meta, source_detail, rx, paste0("Years: ", years[1], "-", years[2]), hour_label,
+    paste0("Median year and range leave out a year-month with under ", TOTALS_COVERAGE_MIN,
+           "% of its hours usable (listed in years_left_out); those still count toward total_h."))
   if (what == "summary") {
     d <- data.frame(period = x$period, measure = x$value, description = totals_measure_label(x$value),
                     median_year_h = x$median, lowest_h = x$low, lowest_year = x$low_year,
@@ -147,10 +157,85 @@ totals_csv_lines <- function(x, meta, source_detail, rx, years, hour_label, what
                     hours_usable = x$n_valid, hours_excluded = x$n_missing, hours_total = x$hours,
                     pct_usable = round(x$pct_usable, 1), in_median = x$used, stringsAsFactors = FALSE)
   }
-  body <- utils::capture.output(utils::write.csv(d, row.names = FALSE, na = ""))
-  c(hdr, body)
+  c(hdr, .totals_csv_body(d))
 }
 
-totals_csv_name <- function(meta, what = "summary")
-  paste0("rxwx_", gsub("[^A-Za-z0-9]+", "-", tolower(meta$name)), "_climatology_",
-         if (what == "summary") "totals" else "per-year", "_", format(Sys.Date(), "%Y%m%d"), ".csv")
+# ---- Past event: by day --------------------------------------------------------------
+# flagged: rx_flag() output for the event's hours. Returns one row per day x
+# measure (plus "Total" rows), with the longest in-prescription run per day.
+totals_event <- function(flagged, rx_vars, hour_col = "hour") {
+  vals <- totals_measures(rx_vars); vals <- vals[vals %in% names(flagged)]
+  d <- clim_summarise(flagged, vals, by = "date")
+  runs <- clim_runs(flagged, "in_rx", by = "date", hour_col = hour_col)
+  out <- data.frame(day = format(d$date, "%Y-%m-%d"), value = d$value, n_true = d$n_true,
+                    n_valid = d$n_valid, n_missing = d$n_missing, stringsAsFactors = FALSE)
+  i <- match(out$day, format(runs$date, "%Y-%m-%d"))
+  ir <- out$value == "in_rx"
+  out$longest_run <- ifelse(ir, runs$longest[i], NA_integer_)
+  out$run_start <- ifelse(ir, runs$start_hour[i], NA_integer_)
+  tot <- stats::aggregate(cbind(n_true, n_valid, n_missing) ~ value, data = out, FUN = sum)
+  tot <- data.frame(day = "Total", value = tot$value, n_true = tot$n_true, n_valid = tot$n_valid,
+                    n_missing = tot$n_missing, longest_run = NA_integer_, run_start = NA_integer_)
+  # the event's longest run may span midnight; the Total row gives the longest single-day run
+  tot$longest_run[tot$value == "in_rx"] <- max(c(0L, runs$longest))
+  out <- rbind(out, tot[match(vals, tot$value), ])
+  rownames(out) <- NULL
+  out
+}
+
+.totals_day_label <- function(day) ifelse(day == "Total", "Total", format(as.Date(day, optional = TRUE), "%a %d %b"))
+
+totals_event_display <- function(ev, rx_vars, clock = FALSE) {
+  ir <- ev[ev$value == "in_rx", ]
+  run <- ifelse(is.na(ir$longest_run) | ir$longest_run == 0, "none",
+                ifelse(is.na(ir$run_start), paste0(ir$longest_run, " h"),
+                       sprintf("%d h, %02d:00-%02d:00", ir$longest_run, ir$run_start, (ir$run_start + ir$longest_run) %% 24)))
+  run[ir$day == "Total"] <- paste0(ir$longest_run[ir$day == "Total"], " h (longest day)")
+  main <- data.frame(.totals_day_label(ir$day), .totals_h(ir$n_true), run, .totals_h(ir$n_valid),
+                     .totals_h(ir$n_missing), stringsAsFactors = FALSE)
+  names(main) <- c("Day", "In prescription (h)", paste0("Longest run (", if (clock) "clock time" else "LST", ")"),
+                   "Hours with data", "Hours excluded")
+  rows <- list()
+  for (v in rx_vars) {
+    lab <- RX_VARS$label[RX_VARS$var == v]
+    for (m in c("pass", "only")) {
+      r <- ev[ev$value == paste0(m, "_", v), ]
+      rows[[length(rows) + 1]] <- c(Limit = if (m == "pass") lab else "",
+                                    Hours = if (m == "pass") "met" else "only one failing",
+                                    stats::setNames(.totals_h(r$n_true[match(ir$day, r$day)]),
+                                                    ifelse(ir$day == "Total", "Total", format(as.Date(ir$day, optional = TRUE), "%d %b"))))
+    }
+  }
+  by_limit <- if (length(rows)) as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE, check.names = FALSE)
+              else data.frame(Limit = character(0), Hours = character(0))
+  list(main = main, by_limit = by_limit)
+}
+
+# what = "daily": totals_event() rows; what = "hourly": the flagged hours themselves.
+totals_event_csv_lines <- function(x, meta, source_detail, rx, dates, hour_label, what = c("daily", "hourly")) {
+  what <- match.arg(what)
+  hdr <- .totals_csv_header(paste0("past event, ", if (what == "daily") "hour totals by day" else "every hour"),
+                            meta, source_detail, rx,
+                            paste0("Dates: ", format(dates[1]), " to ", format(dates[2]), " (local standard time days)"),
+                            hour_label,
+                            if (what == "daily") "longest_run_h: the longest stretch of consecutive in-prescription hours within the day; run_start_hour: its first hour, in the hour convention above."
+                            else "pass_<var>: that limit met; only_<var>: misses the prescription only because of that limit; blank = not known (missing or screened).")
+  if (what == "daily") {
+    d <- data.frame(day = x$day, measure = x$value, description = totals_measure_label(x$value),
+                    hours_true = x$n_true, hours_usable = x$n_valid, hours_excluded = x$n_missing,
+                    longest_run_h = x$longest_run, run_start_hour = x$run_start, stringsAsFactors = FALSE)
+  } else {
+    keep <- c("date", "hour", "hour_clock", "obs_minute", "in_rx", grep("^(pass|only)_", names(x), value = TRUE),
+              intersect(c("temperature", "relativeHumidity", "windSpeed", "windDirection", "gustSpeed",
+                          "precipitation", "solarRadiation"), names(x)))
+    d <- as.data.frame(x)[, intersect(keep, names(x)), drop = FALSE]
+    names(d)[names(d) == "hour"] <- "hour_lst"
+    d$date <- format(d$date, "%Y-%m-%d")
+  }
+  c(hdr, .totals_csv_body(d))
+}
+
+totals_csv_name <- function(meta, what = "summary", tab = "climatology") {
+  part <- switch(what, summary = "totals", per_year = "per-year", daily = "daily", hourly = "hourly", what)
+  paste0("rxwx_", gsub("[^A-Za-z0-9]+", "-", tolower(meta$name)), "_", tab, "_", part, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
+}

@@ -106,3 +106,12 @@ CHART_SEQ <- CHART_RAMPS[[CHART_RAMP]]$colors
 CHART_HIGHLIGHT <- CHART_RAMPS[[CHART_RAMP]]$highlight
 CHART_CELL_GAP <- 2    # px between heatmap cells
 CLIM_HIGHLIGHT_PCT <- 50   # default outline threshold: cells at or above this % of hours in prescription
+
+# ---- Past event --------------------------------------------------------------------
+EVENT_MAX_DAYS     <- 14    # longest stretch the Past event tab shows
+EVENT_DEFAULT_DAYS <- 7
+CHART_IN_RX  <- "#0b5e80"                  # an hour in prescription (the RxWx blue)
+CHART_OUT    <- "#c3ccd3"                  # out of prescription
+CHART_FAIL   <- CHART_HIGHLIGHT            # this limit failed at this hour
+CHART_NIGHT  <- "rgba(25, 45, 70, 0.07)"   # sunset to sunrise shading
+CHART_BAND   <- "rgba(11, 94, 128, 0.08)"  # the prescription range on a variable panel

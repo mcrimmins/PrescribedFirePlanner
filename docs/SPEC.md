@@ -99,8 +99,13 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   - **CSV:** a tidy table with header lines starting `#` giving station, ID, data source and snapshot date, the prescription,
     years, hour convention and app version, so a saved file explains itself. Named `rxwx_<station>_<tab>_<date>.csv`.
   - Computed with `clim_summarise()` (sums, no smoothing) on columns from `rx_flag()`; no second counting path.
-- **Past event:** hourly traces for the selected range with in-prescription hours highlighted and out-of-prescription
-  hours greyed, plus the limiting variable for each hour.
+- **Past event** (built 2026-11-02): up to 14 days from the station's whole record (default: its last 7 days; Earlier and
+  Later buttons step by the window's length). A top strip colours each hour in prescription, out, or not known; below it,
+  one panel each for temperature, RH, wind speed and wind direction (plus precipitation or solar radiation when limited),
+  with the prescription range shaded, markers blue when the hour is in prescription and orange where that limit failed,
+  and night (sunset to sunrise) shaded. The hover names each failing limit with its value and the limit. Under the chart:
+  hours in prescription by day with the longest consecutive run, the same per limit, and Daily and Hourly CSVs.
+  Clock-time toggle at DST stations. The longest run stops at midnight (a day's window, not an overnight one).
 - **Same dates, many years:** the selected window overlaid or stacked for every year in the record, with in-prescription hours counted per year.
 - **Synthetic forecast:**
   - Pick a past issue time and get a 1–7 day forecast of temperature, RH, wind speed and wind direction as a

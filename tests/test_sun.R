@@ -55,6 +55,14 @@ local({
     .check("D3 longest day near 21 Jun, shortest near 21 Dec",
            abs(which.max(st$sunset - st$sunrise) - 172) <= 3 && abs(which.min(st$sunset - st$sunrise) - 355) <= 3)
     .check("D4 sun_fmt_hm formats hours", identical(sun_fmt_hm(c(12.5, 5.25, 23.999)), c("12:30", "05:15", "00:00")))
+
+    .section("E. Night spans (Past event shading)")
+    nn <- sun_nights(32.2, -110.9, -7, as.Date(c("2024-03-10", "2024-03-12")))
+    .check("E1 one night per day plus the night before the first day (4 spans for 3 days)", nrow(nn) == 4, nrow(nn))
+    .check("E2 each night runs sunset to next sunrise: 10-14 h long in March at 32 N",
+           all(nn$to - nn$from > 10 & nn$to - nn$from < 14), paste(round(nn$to - nn$from, 1), collapse = ", "))
+    .check("E3 spans are hours from the first day's midnight: the first ends near 06-07 LST (sunrise)",
+           nn$to[1] > 6 && nn$to[1] < 7.2, round(nn$to[1], 2))
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))

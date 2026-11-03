@@ -112,3 +112,52 @@ tip_station <- function(station_id, name, elevation, state = NA, featured = FALS
                 "<br>Downloads from FEMS (about 30 s)"),
          ifelse(featured & !is.na(note), paste0("<br><i>", note, "</i>"), ""))
 }
+
+# ---- Past event: one tooltip per hour ----------------------------------------------
+# 16-point compass name for a direction in degrees: 225 -> "SW".
+tip_compass <- function(deg) {
+  pts <- c("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+  ifelse(is.na(deg), NA_character_, pts[(round((deg %% 360) / 22.5) %% 16) + 1])
+}
+
+# A limit in words, for "fails RH 12% (limit 20-55%)".
+.tip_limit <- function(var, lo, hi) {
+  f <- function(x) sub("^n/a$", "", tip_value(var, x))
+  if (var == "windDirection") return(sprintf("%s to %s", tip_compass(lo), tip_compass(hi)))
+  if (is.na(lo)) paste("up to", f(hi)) else if (is.na(hi)) paste("at least", f(lo)) else paste(f(lo), "to", f(hi))
+}
+
+# flagged: rx_flag() output for the event's hours (date, hour, hour_clock,
+# time_clock, the variables, pass_<var>, in_rx). Returns one string per row.
+tip_event_hours <- function(flagged, rx, clock = FALSE, obs_minute = NA_integer_) {
+  vars <- rx_constrained(rx)
+  n <- nrow(flagged)
+  when <- if (clock) format(flagged$time_clock, "%a %d %b %Y, %H:00 clock time")
+          else paste0(format(flagged$date, "%a %d %b %Y, "), sprintf("%02d:00 LST", as.integer(flagged$hour)),
+                      if (!is.na(obs_minute) && obs_minute > 0) sprintf(" (read at :%02d)", as.integer(obs_minute)) else "")
+  status <- character(n)
+  for (i in seq_len(n)) {
+    ir <- flagged$in_rx[i]
+    if (isTRUE(ir)) { status[i] <- "<b>In prescription</b>"; next }
+    fails <- character(0); unknown <- character(0)
+    for (v in vars) {
+      p <- flagged[[paste0("pass_", v)]][i]
+      j <- which(rx$var == v)
+      if (is.na(p)) unknown <- c(unknown, .tip_short[[v]])
+      else if (!p) fails <- c(fails, sprintf("%s %s (limit %s)", .tip_short[[v]],
+                                             if (v == "windDirection") tip_compass(flagged$windDirection[i]) else tip_value(v, flagged[[v]][i]),
+                                             .tip_limit(v, rx$min[j], rx$max[j])))
+    }
+    status[i] <- paste0(if (length(fails)) paste0("<b>Out</b>: ", paste(fails, collapse = "; ")) else "<b>Not known</b>",
+                        if (length(unknown)) paste0(if (length(fails)) "<br>" else ": ", "no data for ", paste(unknown, collapse = ", ")) else "")
+  }
+  wx <- paste0("Temp ", vapply(flagged$temperature, function(x) tip_value("temperature", x), ""),
+               " \u00b7 RH ", vapply(flagged$relativeHumidity, function(x) tip_value("relativeHumidity", x), ""),
+               "<br>Wind ", vapply(flagged$windSpeed, function(x) tip_value("windSpeed", x), ""),
+               ifelse(!is.na(flagged$windSpeed) & flagged$windSpeed == 0, " (calm)",
+                      ifelse(is.na(flagged$windDirection), "", paste0(" from ", tip_compass(flagged$windDirection),
+                                                                      " (", round(flagged$windDirection), "\u00b0)"))),
+               ifelse(is.na(flagged$precipitation) | flagged$precipitation == 0, "",
+                      paste0(" \u00b7 Rain ", vapply(flagged$precipitation, function(x) tip_value("precipitation", x), ""))))
+  paste0(when, "<br>", status, "<br>", wx)
+}

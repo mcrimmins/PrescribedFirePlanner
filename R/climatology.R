@@ -104,3 +104,33 @@ clim_summarise <- function(flagged, value = "in_rx", by = c("month", "hour"), sm
   ord <- do.call(order, unname(as.list(res[by])))
   res[ord, , drop = FALSE]
 }
+
+# ---- runs: the longest stretch of consecutive TRUE hours per group ----------------
+#   clim_runs(flagged, value = "in_rx", by = "date", hour_col = "hour")
+# For each group (e.g. each day), the longest run of consecutive hours where
+# `value` is TRUE, and the hour it starts. A FALSE or NA hour ends a run, and
+# runs don't cross group boundaries (a day's run stops at midnight).
+# Returns: <by columns>, longest (hours, 0 if none), start_hour (NA if none).
+# Used for the Past event daily table now, and the window-length climatology later.
+clim_runs <- function(flagged, value = "in_rx", by = "date", hour_col = "hour") {
+  miss <- setdiff(c(value, by, hour_col), names(flagged))
+  if (length(miss)) stop("clim_runs(): no column(s) ", paste(miss, collapse = ", "), call. = FALSE)
+  d <- flagged[do.call(order, unname(as.list(flagged[c(by, hour_col)]))), c(by, hour_col, value)]
+  gkey <- do.call(paste, c(unname(as.list(d[by])), sep = "\r"))
+  x <- !is.na(d[[value]]) & d[[value]]
+  newg <- c(TRUE, gkey[-1] != gkey[-length(gkey)])
+  rid <- cumsum(!x | newg)                   # a new run id at every break or group start
+  G <- unique(gkey); gi <- match(gkey, G)
+  res <- d[match(seq_along(G), gi), by, drop = FALSE]
+  res$longest <- 0L; res$start_hour <- NA_integer_
+  if (any(x)) {
+    len <- tabulate(rid[x], nbins = max(rid))
+    first <- match(seq_len(max(rid)), ifelse(x, rid, NA_integer_))   # first TRUE row of each run
+    rr <- data.frame(g = gi[first[len > 0]], len = len[len > 0], start = d[[hour_col]][first[len > 0]])
+    rr <- rr[order(rr$g, -rr$len, rr$start), ]
+    rr <- rr[!duplicated(rr$g), ]
+    res$longest[rr$g] <- as.integer(rr$len); res$start_hour[rr$g] <- as.integer(rr$start)
+  }
+  rownames(res) <- NULL
+  res
+}

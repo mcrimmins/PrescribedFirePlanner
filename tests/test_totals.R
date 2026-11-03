@@ -119,6 +119,33 @@ local({
       .say("      ", paste(names(d$by_limit), collapse = " | "))
       for (k in seq_len(nrow(d$by_limit))) .say("      ", paste(unlist(d$by_limit[k, ]), collapse = " | "))
     }
+
+    .section("F. Past event: totals by day")
+    vars <- rx_constrained(rx)    # section E reused the name for the bundled station
+    e3 <- f[f$date >= as.Date("2005-03-10") & f$date <= as.Date("2005-03-12"), ]
+    te <- totals_event(e3, vars)
+    ir <- te[te$value == "in_rx", ]
+    .check("F1 one row per day per measure, plus Total rows", nrow(te) == (3 + 1) * length(totals_measures(vars)) &&
+             identical(ir$day, c("2005-03-10", "2005-03-11", "2005-03-12", "Total")))
+    .check("F2 daily in-prescription hours match the flagged table, and Total is their sum",
+           all(ir$n_true[1:3] == tapply(e3$in_rx, e3$date, sum, na.rm = TRUE)) && ir$n_true[4] == sum(e3$in_rx, na.rm = TRUE))
+    .check("F3 the longest run matches clim_runs, and Total gives the longest single day",
+           all(ir$longest_run[1:3] == clim_runs(e3)$longest) && ir$longest_run[4] == max(ir$longest_run[1:3]))
+    de <- totals_event_display(te, vars)
+    .check("F4 display: a row per day + Total; runs read like '5 h, 10:00-15:00' or 'none'",
+           nrow(de$main) == 4 && all(grepl("^([0-9]+ h, [0-9]{2}:00-[0-9]{2}:00|none|[0-9]+ h \\(longest day\\))$", de$main[[3]])),
+           paste(de$main[[3]], collapse = " | "))
+    .check("F5 by-limit table: days + Total across", identical(names(de$by_limit), c("Limit", "Hours", "10 Mar", "11 Mar", "12 Mar", "Total")),
+           paste(names(de$by_limit), collapse = " | "))
+    ld <- totals_event_csv_lines(te, meta, "test data", rx, as.Date(c("2005-03-10", "2005-03-12")), "LST", "daily")
+    bd <- utils::read.csv(textConnection(ld), comment.char = "#", stringsAsFactors = FALSE)
+    .check("F6 daily CSV reads back, with the dates in the header", nrow(bd) == nrow(te) &&
+             any(grepl("Dates: 2005-03-10 to 2005-03-12", ld, fixed = TRUE)) && "longest_run_h" %in% names(bd))
+    lh <- totals_event_csv_lines(e3, meta, "test data", rx, as.Date(c("2005-03-10", "2005-03-12")), "LST", "hourly")
+    bh <- utils::read.csv(textConnection(lh), comment.char = "#", stringsAsFactors = FALSE)
+    .check("F7 hourly CSV: 72 hours, with in_rx, pass_ and only_ columns and the values",
+           nrow(bh) == 72 && all(c("date", "hour_lst", "in_rx", "pass_temperature", "only_relativeHumidity", "temperature") %in% names(bh)))
+    .check("F8 file names carry the tab", grepl("_past-event_daily_", totals_csv_name(meta, "daily", tab = "past-event"), fixed = TRUE))
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))

@@ -62,3 +62,17 @@ sun_fmt_hm <- function(h) {
   m <- round(h * 60)
   ifelse(is.na(m), NA_character_, sprintf("%02d:%02d", (m %/% 60) %% 24, m %% 60))
 }
+
+# Night spans (sunset to next sunrise) covering the given dates, as decimal
+# hours from the first date's midnight, in local standard time. Add a clock
+# shift yourself for clock-time charts. Returns from, to (hours).
+sun_nights <- function(lat, lon, std_offset_h, dates) {
+  dd <- seq(min(dates) - 1, max(dates), by = "day")
+  doy <- function(d) { lt <- as.POSIXlt(d); y <- lt$year + 1900; k <- lt$yday + 1
+                       leap <- (y %% 4 == 0 & y %% 100 != 0) | y %% 400 == 0
+                       pmin(ifelse(leap & k >= 60, k - 1, k), 365) }
+  st0 <- sun_times(lat, lon, std_offset_h, doy(dd)); st1 <- sun_times(lat, lon, std_offset_h, doy(dd + 1))
+  off <- as.numeric(dd - min(dates)) * 24
+  out <- data.frame(from = off + st0$sunset, to = off + 24 + st1$sunrise)
+  out[!is.na(out$from) & !is.na(out$to), ]
+}

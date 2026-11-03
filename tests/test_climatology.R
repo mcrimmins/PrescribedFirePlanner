@@ -101,6 +101,19 @@ local({
       .info("E6 example", sprintf("%s: best cell month %d hour %02d at %.0f%% of %d hours (%d years)",
                                   st$meta$name, best$month, best$hour, 100 * best$stat, best$n_valid, best$n_years))
     }
+
+    .section("F. Runs (longest stretch of in-prescription hours)")
+    rd <- data.frame(year = 2024, date = rep(as.Date(c("2024-01-01", "2024-01-02", "2024-01-03")), each = 6), hour = rep(0:5, 3),
+                     in_rx = c(TRUE, TRUE, FALSE, TRUE, TRUE, TRUE,   NA, TRUE, TRUE, FALSE, TRUE, FALSE,   rep(FALSE, 6)))
+    ru <- clim_runs(rd[sample(nrow(rd)), ])              # shuffled: clim_runs sorts by group and hour itself
+    .check("F1 the longest run wins and keeps its start (day 1: 3 h from 03:00, not 2 h from 00:00)",
+           ru$longest[1] == 3 && ru$start_hour[1] == 3)
+    .check("F2 a missing hour ends a run (day 2: NA at 00, then 2 h from 01:00)", ru$longest[2] == 2 && ru$start_hour[2] == 1)
+    .check("F3 a day with no TRUE hours: 0 h, no start", ru$longest[3] == 0 && is.na(ru$start_hour[3]))
+    rr <- clim_runs(data.frame(date = as.Date("2024-01-01") + c(0, 0, 1, 1), hour = c(22, 23, 0, 1), in_rx = TRUE))
+    .check("F4 runs stop at midnight (two 2 h runs, not one 4 h run)", all(rr$longest == 2))
+    .check("F5 ties keep the earlier run", clim_runs(data.frame(date = as.Date("2024-01-01"), hour = 0:4,
+                                                                in_rx = c(TRUE, FALSE, FALSE, TRUE, FALSE)))$start_hour == 0)
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))

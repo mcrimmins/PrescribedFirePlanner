@@ -26,7 +26,7 @@ local({
     if (!all(have)) stop("missing packages")
     suppressPackageStartupMessages({ library(shiny); library(bslib) })
     .source_core("A")
-    for (f in c("fems_download", "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology")) {
+    for (f in c("fems_download", "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event")) {
       r <- .run(paste("source", f), source(file.path("R", paste0(f, ".R"))))
       .check(paste0("A5 R/", f, ".R loads"), r$ok)
     }
@@ -58,6 +58,8 @@ local({
               paste0("rx-msg_", RX_VARS$var),
               "clim-title", "clim-controls", "clim-heat", "clim-tbl", "clim-caption", "clim-outline_on", "clim-outline_pct",
               "clim-totals_note", "clim-totals_main", "clim-totals_limit", "clim-csv_totals", "clim-csv_years",
+              paste0("event-", c("dates", "back", "fwd", "controls", "plot_box", "caption", "totals_main", "totals_limit",
+                                 "csv_daily", "csv_hourly")),
               "quality-items", "quality-coverage", "quality-log")
     miss <- setdiff(need, ids)
     .check("B3 every input/output id the server uses is in the UI", !length(miss), paste("missing:", paste(miss, collapse = ", ")))
@@ -159,6 +161,28 @@ local({
         cap <- paste(unlist(output$caption), collapse = " ")
         .check("D4 the caption states the years and the excluded hours",
                grepl("Years 2005-2025", cap, fixed = TRUE) && grepl("are excluded", cap, fixed = TRUE))
+      })
+    }
+
+    .section("E. Past event module (testServer, real station)")
+    if (nrow(mf)) {
+      shiny::testServer(mod_event_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rx0)), {
+        r <- range(st0$hourly$date)
+        session$setInputs(dates = c(r[2] - 6, r[2]))
+        e <- ev()
+        .check("E1 a 7-day event: 168 hours flagged, panels for temperature, RH, wind speed and direction",
+               nrow(e$fl) == 168 && all(c("temperature", "relativeHumidity", "windSpeed", "windDirection") %in% e$show),
+               paste(nrow(e$fl), "hours;", paste(e$show, collapse = ", ")))
+        .check("E2 precipitation gets a panel because it is limited", "precipitation" %in% e$show)
+        .check("E3 the chart renders", grepl("scatter", paste(output$plot, collapse = ""), fixed = TRUE))
+        .check("E4 the daily table: 7 days + Total", grepl("Total", paste(output$totals_main, collapse = ""), fixed = TRUE) &&
+                 lengths(regmatches(paste(output$totals_main, collapse = ""), gregexpr("<tr", paste(output$totals_main, collapse = "")))) == 9)
+        rl <- function(f) { con <- file(f, encoding = "UTF-8-BOM"); on.exit(close(con)); readLines(con, warn = FALSE) }
+        ln <- rl(output$csv_daily); lh <- rl(output$csv_hourly)
+        .check("E5 both CSVs download (daily and 168 hourly rows)", any(grepl("^\"day\"", ln)) && sum(!startsWith(lh, "#")) == 169)
+        session$setInputs(dates = c(r[2] - 20, r[2]))
+        msg <- tryCatch({ ev(); "" }, error = function(e) conditionMessage(e))
+        .check("E6 more than 14 days is refused in plain words", grepl("up to 14 days", msg, fixed = TRUE), msg)
       })
     }
   }, error = function(e) {

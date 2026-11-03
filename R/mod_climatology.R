@@ -44,7 +44,7 @@ mod_climatology_ui <- function(id) {
         shiny::div(class = "small text-muted mb-1",
                    "Met: hours that limit is met on its own. Only one failing: hours that miss the prescription only because of that limit, ",
                    "so the larger it is, the more that limit is holding the window shut."),
-        shiny::div(class = "table-responsive", shiny::tableOutput(ns("totals_limit"))))))
+        shiny::div(class = "table-responsive tbl-limits", shiny::tableOutput(ns("totals_limit"))))))
 }
 
 mod_climatology_server <- function(id, st, rx) {
