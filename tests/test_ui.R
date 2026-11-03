@@ -57,6 +57,7 @@ local({
               paste0("rx-", c("min_", "max_"), "windDirection"),
               paste0("rx-msg_", RX_VARS$var),
               "clim-title", "clim-controls", "clim-heat", "clim-tbl", "clim-caption", "clim-outline_on", "clim-outline_pct",
+              "clim-totals_note", "clim-totals_main", "clim-totals_limit", "clim-csv_totals", "clim-csv_years",
               "quality-items", "quality-coverage", "quality-log")
     miss <- setdiff(need, ids)
     .check("B3 every input/output id the server uses is in the UI", !length(miss), paste("missing:", paste(miss, collapse = ", ")))
@@ -144,6 +145,17 @@ local({
         .check("D2 the table output renders, with cells at or above 40% in bold",
                grepl("<table", paste(output$tbl, collapse = ""), fixed = TRUE) && grepl("<b>", paste(output$tbl, collapse = ""), fixed = TRUE))
         .check("D3 the heatmap output renders", !is.null(output$heat) && grepl("heatmap", paste(output$heat, collapse = ""), fixed = TRUE))
+        tm <- paste(output$totals_main, collapse = "")
+        .check("D5 the totals table renders, 12 months + Year", grepl("<table", tm, fixed = TRUE) && grepl("Year", tm, fixed = TRUE) &&
+                 all(vapply(month.abb, grepl, logical(1), x = tm, fixed = TRUE)))
+        .check("D6 the by-limit table has a 'met' and an 'only one failing' column per limit",
+               grepl("only one failing", paste(output$totals_limit, collapse = ""), fixed = TRUE))
+        csv <- output$csv_totals
+        ln <- readLines(csv, encoding = "UTF-8", warn = FALSE)
+        .check("D7 the totals CSV downloads, with header lines and the station name",
+               length(ln) > 20 && any(grepl(st0$meta$name, ln, fixed = TRUE)) && any(grepl("^\"period\"", ln)))
+        ln2 <- readLines(output$csv_years, encoding = "UTF-8", warn = FALSE)
+        .check("D8 the per-year CSV downloads", any(grepl("^\"year\"", ln2)))
         cap <- paste(unlist(output$caption), collapse = " ")
         .check("D4 the caption states the years and the excluded hours",
                grepl("Years 2005-2025", cap, fixed = TRUE) && grepl("are excluded", cap, fixed = TRUE))

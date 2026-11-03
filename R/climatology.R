@@ -14,11 +14,13 @@
 #              2 * smooth_days + 1 days that wraps from Dec into Jan.
 #
 # Returns one row per group per value (long format):
-#   <by columns>, value, kind ("share"|"mean"), n_valid, n_missing, n_years, stat
+#   <by columns>, value, kind ("share"|"mean"), n_valid, n_missing, n_years, n_true, stat
 # n_valid    hours with a value (the denominator)
 # n_missing  hours in the group with no value (excluded: missing, screened,
 #            or -- for in_rx -- any constrained variable missing)
 # n_years    distinct years contributing at least one valid hour
+# n_true     for a share: the hours TRUE (the count behind the share; for hour
+#            totals). NA for a mean.
 #
 # Smoothing works on sums and counts, then divides, so it is exact (not an
 # average of averages) and fast at ~190k rows.
@@ -29,7 +31,9 @@ clim_summarise <- function(flagged, value = "in_rx", by = c("month", "hour"), sm
   if (length(miss)) stop("clim_summarise(): no column(s) ", paste(miss, collapse = ", "), call. = FALSE)
   if (smooth_days > 0 && !"doy" %in% by)
     stop("clim_summarise(): smooth_days > 0 needs \"doy\" in `by` (it smooths across days of the year)", call. = FALSE)
-  out <- lapply(value, function(v) .clim_one(flagged, v, by, smooth_days))
+  # the grouping key is the slow part (paste over ~190k rows): build it once for all values
+  gkey <- if (smooth_days > 0) NULL else do.call(paste, c(unname(as.list(flagged[by])), sep = "\r"))
+  out <- lapply(value, function(v) .clim_one(flagged, v, by, smooth_days, gkey))
   out <- do.call(rbind, out)
   rownames(out) <- NULL
   out
@@ -47,7 +51,7 @@ clim_summarise <- function(flagged, value = "in_rx", by = c("month", "hour"), sm
   C[(2 * k + 2):(n + 2 * k + 1), , drop = FALSE] - C[1:n, , drop = FALSE]
 }
 
-.clim_one <- function(d, v, by, smooth_days) {
+.clim_one <- function(d, v, by, smooth_days, gkey = NULL) {
   x <- d[[v]]
   kind <- if (is.logical(x)) "share" else "mean"
   xv <- as.numeric(x); valid <- !is.na(xv); xv[!valid] <- 0
@@ -81,18 +85,20 @@ clim_summarise <- function(flagged, value = "in_rx", by = c("month", "hour"), sm
     res$value <- v; res$kind <- kind
     res$n_valid <- as.vector(NV); res$n_missing <- as.vector(NA_ - NV)
     res$n_years <- as.vector(NY)
+    res$n_true <- if (kind == "share") as.vector(S) else NA_real_
     res$stat <- ifelse(res$n_valid > 0, as.vector(S) / res$n_valid, NA_real_)
     res <- res[res$n_valid + res$n_missing > 0, , drop = FALSE]
   } else {
-    gkey <- do.call(paste, c(unname(as.list(d[by])), sep = "\r"))
+    if (is.null(gkey)) gkey <- do.call(paste, c(unname(as.list(d[by])), sep = "\r"))
     G <- unique(gkey); gi <- match(gkey, G); NG <- length(G)
     sums <- as.vector(rowsum(xv, gi, reorder = TRUE)[, 1])
     nv <- tabulate(gi[valid], nbins = NG); na <- tabulate(gi, nbins = NG)
-    yk <- unique(data.frame(g = gi[valid], y = yi[valid]))
-    ny <- tabulate(yk$g, nbins = NG)
+    yk <- unique((yi[valid] - 1L) * NG + gi[valid])   # integer key per (year, group); unique() on a data frame is slow
+    ny <- tabulate((yk - 1L) %% NG + 1L, nbins = NG)
     res <- d[match(seq_len(NG), gi), by, drop = FALSE]
     res$value <- v; res$kind <- kind
     res$n_valid <- nv; res$n_missing <- na - nv; res$n_years <- ny
+    res$n_true <- if (kind == "share") sums else NA_real_
     res$stat <- ifelse(nv > 0, sums / nv, NA_real_)
   }
   ord <- do.call(order, unname(as.list(res[by])))

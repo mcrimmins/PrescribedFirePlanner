@@ -66,6 +66,14 @@ QUALITY_STEP_SPREAD     <- 4     # ... and it must be >= this many times the yea
 QUALITY_STEP_MIN_SIDE   <- 3     # years needed on each side of a step
 QUALITY_TIMING_VARS     <- c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")
 QUALITY_COVERAGE_MIN    <- 80    # % of hours with a value; a baseline year below this "affects results"
+
+APP_VERSION <- "0.2.0"   # written into CSV exports; bump with each deploy tag
+
+# ---- hour totals (R/totals.R) ---------------------------------------------------
+# A year-month (or year) with fewer of its hours reporting than this is left
+# out of the median year and the range: missing hours would read as fewer
+# burnable hours. It still counts toward the total. DRAFT -- PFTC to review.
+TOTALS_COVERAGE_MIN <- 80   # %
 QUALITY_PRECIP_RATIO    <- c(0.4, 2.5)   # median annual total / metadata average, outside => units suspect
 QUALITY_PRECIP_UNDERCATCH <- 0.7         # ratio below this (but above 0.4) => gauge likely misses snow
 QUALITY_PRECIP_YEAR     <- c(0.5, 2.0)   # a year outside this fraction of the station's OWN median is noted (info)

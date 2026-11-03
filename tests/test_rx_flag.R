@@ -3,7 +3,8 @@
 #
 # Hand-built hours with hand-checked answers: limit edges (inclusive),
 # one-sided limits, wind sectors that wrap through north, 360 == 0, calm
-# hours passing a direction limit, and how missing values propagate.
+# hours passing a direction limit, how missing values propagate, and only_<var>
+# (the one limit holding an hour out).
 #
 #     source("tests/test_rx_flag.R")
 # ==============================================================================
@@ -62,6 +63,19 @@ local({
            setequal(grep("^pass_", names(f), value = TRUE), c("pass_temperature", "pass_relativeHumidity")))
     .check("D6 an empty prescription puts every hour in", all(rx_flag(h, rx_new())$in_rx))
     .check("D7 rx_constrained() lists variables with a bound", identical(rx_constrained(rx), c("temperature", "relativeHumidity")))
+    .check("D8 only_<var>: the one failing limit is flagged (row 3 temperature only, row 5 RH only), not a passing hour",
+           identical(f$only_temperature[c(1, 3, 5)], c(FALSE, TRUE, FALSE)) &&
+             identical(f$only_relativeHumidity[c(1, 3, 5)], c(FALSE, FALSE, TRUE)))
+    .check("D9 only_<var> is NA wherever in_rx is NA (rows 6, 7)",
+           all(is.na(f$only_temperature[6:7])) && all(is.na(f$only_relativeHumidity[6:7])))
+    f2 <- rx_flag(h, rx_new(temperature = c(40, 85), relativeHumidity = c(31, 55)))
+    .check("D10 both limits failing -> neither only_ column is TRUE (row 3: 39.9 F, RH 30)",
+           identical(c(f2$only_temperature[3], f2$only_relativeHumidity[3]), c(FALSE, FALSE)))
+    f1 <- rx_flag(h, rx_new(temperature = c(40, 85)))
+    .check("D11 with one limit on, only_<var> is !pass_<var>", identical(f1$only_temperature, !f1$pass_temperature))
+    .check("D12 in_rx + every only_ + 'two or more failing' account for every valid hour",
+           { ok <- !is.na(f$in_rx); two <- ok & !f$in_rx & !f$only_temperature & !f$only_relativeHumidity
+             all(f$in_rx[ok] + f$only_temperature[ok] + f$only_relativeHumidity[ok] + two[ok] == 1) })
 
     .section("E. Problems are reported in plain words")
     pr <- function(...) rx_problems(data.frame(..., stringsAsFactors = FALSE))

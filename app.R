@@ -16,7 +16,7 @@ library(bslib)
 
 # Fixed order; every file namespaces its other packages (CLAUDE.md).
 for (f in c("constants", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
-            "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology")) {
+            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology")) {
   source(file.path("R", paste0(f, ".R")))
 }
 
@@ -62,6 +62,7 @@ ui <- page_navbar(
   title = tags$img(src = "RxWxLogo_banner.png", height = "52", class = "app-logo",
                    alt = paste0("RxWx: ", APP_NAME)),
   window_title = APP_NAME,
+  fillable = FALSE,   # tabs scroll; the Climatology chart and its totals stack instead of sharing one screen
   id = "main_nav",
   theme = bs_theme(version = 5, primary = APP_BLUE),
   header = tags$head(tags$style(HTML(app_css))),

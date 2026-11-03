@@ -156,7 +156,7 @@
 
 # ---- app layers (no network) --------------------------------------------------
 # Sources the app's core layers in app order. Returns TRUE, or stops the test.
-APP_CORE_FILES <- c("constants", "sun", "hourly", "quality", "rx", "climatology")
+APP_CORE_FILES <- c("constants", "sun", "hourly", "quality", "rx", "climatology", "totals")
 .source_core <- function(prefix = "A") {
   at_root <- file.exists("PrescribedFirePlanner.Rproj") && dir.exists("R")
   .check(paste0(prefix, "1 working directory is the project root"), at_root,

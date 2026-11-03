@@ -6,12 +6,15 @@
 # plus the same numbers as a table. Clock-time toggle only at DST stations.
 # Takes reactives st() (station object) and rx() (prescription).
 # Requires R/constants.R, R/hourly.R, R/rx.R, R/climatology.R,
-# R/tooltips.R, R/plots.R.
+# R/tooltips.R, R/plots.R, R/totals.R.
+#
+# Below the chart: hour totals (R/totals.R) by month -- typical year, range
+# and total for hours in prescription, the same per limit, and two CSVs.
 # ==============================================================================
 
 mod_climatology_ui <- function(id) {
   ns <- shiny::NS(id)
-  bslib::card(
+  shiny::tagList(bslib::card(
     full_screen = TRUE,
     bslib::card_header(shiny::uiOutput(ns("title"))),
     bslib::card_body(
@@ -27,7 +30,21 @@ mod_climatology_ui <- function(id) {
         bslib::nav_panel("Table", shiny::div(class = "small text-muted my-2",
                                              "% of hours in prescription, by month (columns) and hour (rows). Bold: at or above the outline threshold."),
                          shiny::tableOutput(ns("tbl")))),
-      shiny::uiOutput(ns("caption"))))
+      shiny::uiOutput(ns("caption")))),
+    bslib::card(
+      bslib::card_header(class = "d-flex flex-wrap align-items-center gap-2",
+        shiny::span("Hours in prescription, by month ", shiny::span(class = "text-muted fw-normal", "(counts, for reporting)")),
+        shiny::div(class = "ms-auto d-flex gap-2",
+          shiny::downloadButton(ns("csv_totals"), "Totals (CSV)", class = "btn-sm btn-outline-primary"),
+          shiny::downloadButton(ns("csv_years"), "Per year (CSV)", class = "btn-sm btn-outline-primary"))),
+      bslib::card_body(
+        shiny::uiOutput(ns("totals_note")),
+        shiny::tableOutput(ns("totals_main")),
+        shiny::h6("By limit: hours in a typical year (median), by month", class = "mt-2"),
+        shiny::div(class = "small text-muted mb-1",
+                   "Met: hours that limit is met on its own. Only one failing: hours that miss the prescription only because of that limit, ",
+                   "so the larger it is, the more that limit is holding the window shut."),
+        shiny::div(class = "table-responsive", shiny::tableOutput(ns("totals_limit"))))))
 }
 
 mod_climatology_server <- function(id, st, rx) {
@@ -42,15 +59,54 @@ mod_climatology_server <- function(id, st, rx) {
       shiny::req(st())
       hourly_baseline(st()$hourly)
     })
+    flagged <- shiny::reactive(rx_flag(base(), rx()))   # shared by the heatmap and the totals
     summ <- shiny::reactive({
-      r <- rx(); b <- base()
-      fl <- rx_flag(b, r)
+      r <- rx(); fl <- flagged()
       vars <- rx_constrained(r)
       vals <- c("in_rx", paste0("pass_", vars), intersect(vars, c("temperature", "relativeHumidity", "windSpeed",
                                                                  "precipitation", "solarRadiation")))
       list(long = clim_summarise(fl, vals, by = c("month", hour_col())), vars = vars, n = nrow(fl),
            years = range(fl$year))
     })
+
+    # ---- hour totals (counts; independent of the hour toggle) --------------------------
+    tot <- shiny::reactive({
+      r <- rx(); fl <- flagged(); vars <- rx_constrained(r)
+      py <- totals_per_year(fl, vars, "month")
+      list(per_year = py, summary = totals_summary(py), vars = vars, rx = r, years = range(fl$year))
+    })
+    tot_disp <- shiny::reactive(totals_display(tot()$summary, tot()$vars))
+    output$totals_note <- shiny::renderUI({
+      shiny::validate(shiny::need(st(), "Load a station to see hour totals."))
+      t <- tot()
+      shiny::div(class = "small text-muted mb-2",
+                 sprintf("Years %d-%d. Typical year = the median year; the range names the lowest and highest years. ",
+                         t$years[1], t$years[2]),
+                 if (tot_disp()$any_left_out)
+                   sprintf("* Some years are left out of the median and range because under %d%% of that month's hours were usable (they still count in the total; see the per-year CSV).",
+                           TOTALS_COVERAGE_MIN))
+    })
+    output$totals_main <- shiny::renderTable({
+      shiny::req(st()); tot_disp()$main
+    }, striped = TRUE, spacing = "xs", align = "lrcrcr")
+    output$totals_limit <- shiny::renderTable({
+      shiny::req(st())
+      d <- tot_disp()$by_limit
+      shiny::validate(shiny::need(nrow(d) > 0, "No limits are on, so every hour counts."))
+      d
+    }, striped = TRUE, spacing = "xs", align = paste0("ll", strrep("r", 13)))
+    csv_out <- function(what) shiny::downloadHandler(
+      filename = function() totals_csv_name(st()$meta, what),
+      content = function(file) {
+        t <- tot()
+        lines <- totals_csv_lines(if (what == "summary") t$summary else t$per_year, st()$meta, st()$source$detail,
+                                  t$rx, t$years, "local standard time (LST)", what)
+        con <- file(file, open = "wb"); on.exit(close(con))
+        writeBin(charToRaw("\xef\xbb\xbf"), con)       # UTF-8 byte-order mark, so Excel shows degree signs
+        writeLines(enc2utf8(lines), con, sep = "\r\n", useBytes = TRUE)
+      })
+    output$csv_totals <- csv_out("summary")
+    output$csv_years <- csv_out("per_year")
 
     output$title <- shiny::renderUI({
       if (is.null(st())) return("Climatology")

@@ -35,6 +35,11 @@ local({
     m <- clim_summarise(d, "temperature", by = "month")
     .check("B4 mean of a numeric value, ignoring NA (Jan 65, Feb 40)",
            identical(m$stat, c(65, 40)) && all(m$kind == "mean") && identical(m$n_missing, c(1L, 0L)))
+    .check("B4b n_true counts the TRUE hours behind a share (Jan 13:00: 2), NA for a mean",
+           s$n_true[s$month == 1 & s$hour == 13] == 2 && s$n_true[s$month == 2 & s$hour == 13] == 0 && all(is.na(m$n_true)))
+    sm <- clim_summarise(data.frame(year = 2020, doy = rep(1:365, each = 2), hour = 0, in_rx = c(TRUE, FALSE)),
+                         "in_rx", by = c("doy", "hour"), smooth_days = 3)
+    .check("B4c smoothed n_true is the window sum (7 days x 1 TRUE = 7)", all(sm$n_true == 7))
     lg <- clim_summarise(d, c("in_rx", "temperature"), by = "month")
     .check("B5 several values -> long output, one row per group per value",
            nrow(lg) == 4 && setequal(unique(lg$value), c("in_rx", "temperature")))

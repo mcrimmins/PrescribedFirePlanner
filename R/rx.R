@@ -69,7 +69,7 @@ rx_validate <- function(rx) {
   if (a <= b) d >= a & d <= b else d >= a | d <= b
 }
 
-# Add pass_<var> for each constrained variable, and in_rx.
+# Add pass_<var> and only_<var> for each constrained variable, and in_rx.
 rx_flag <- function(h, rx) {
   rx <- rx_validate(rx)
   vars <- rx_constrained(rx)
@@ -100,6 +100,14 @@ rx_flag <- function(h, rx) {
     any_na <- rowSums(is.na(m)) > 0
     all_ok <- rowSums(m, na.rm = TRUE) == length(pass_cols)
     h$in_rx <- ifelse(any_na, NA, all_ok)
+    # only_<var>: this limit fails and every other constrained limit passes
+    # (the one limit holding the hour out). NA wherever in_rx is NA.
+    n_pass <- rowSums(m, na.rm = TRUE)
+    for (k in seq_along(pass_cols)) {
+      o <- !m[, k] & n_pass == length(pass_cols) - 1
+      o[any_na] <- NA
+      h[[paste0("only_", vars[k])]] <- as.logical(o)
+    }
   }
   attr(h, "rx_vars") <- vars
   h

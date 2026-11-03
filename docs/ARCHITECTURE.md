@@ -183,6 +183,8 @@ Shared dot-prefixed helpers go in `tests/helpers.R`.
   (including a 120 h RH-at-1% run) and leaves real-looking weather alone (a monsoon outflow drop, fog at 100%, a 23 h calm).
   Clock-time columns are checked across the March and November changeovers.
 - `test_tooltips.R`: no network. Tooltip text for known summaries: counts, %, units, the failed-limit wording.
+- `test_totals.R`: no network. Hand-built counts for the median year, named range, total and the 80% coverage rule;
+  display tables; the CSV header and round trip; on a bundled station, the totals match the heatmap's own counts.
 - `test_quality.R`: no network. Planted cases: a 0.5 h temperature step from 2021 is found with the right year; a 120 h stuck
   run appears in the screening log; coverage counts; a drought year is "info", not "affects".
 - `test_fems_retry.R`: no network. A stubbed `.post` returns 502, 502, then 200: one result after two waits. Always 502:
