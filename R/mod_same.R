@@ -25,9 +25,6 @@ mod_same_ui <- function(id) {
                                            start = d0[1], end = d0[2], format = "d M", startview = "year", width = "100%")),
           shiny::div(class = "mb-3", shiny::actionButton(ns("use_event"), "Use the Past event dates",
                                                           class = "btn-sm btn-outline-secondary")),
-          shiny::div(style = "width: 250px;",
-                     shiny::sliderInput(ns("min_run"), "A usable day has a run of at least", min = 1, max = 12,
-                                        value = SAME_MIN_RUN_H, step = 1, post = " h", ticks = FALSE, width = "100%")),
           shiny::div(class = "mb-3", shiny::uiOutput(ns("controls")))),
         shiny::uiOutput(ns("plot_box")),
         shiny::uiOutput(ns("caption")))),
@@ -50,7 +47,7 @@ mod_same_server <- function(id, st, rx, event_dates = shiny::reactive(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
     clock <- shiny::reactive(isTRUE(input$clock) && isTRUE(st()$meta$has_dst))
-    min_run <- shiny::debounce(shiny::reactive(if (is.null(input$min_run)) SAME_MIN_RUN_H else input$min_run), RX_DEBOUNCE_MS)
+    min_run <- shiny::reactive(rx_min_window(rx()))      # the sidebar's minimum usable window
 
     shiny::observeEvent(input$use_event, {
       d <- event_dates()
@@ -78,11 +75,14 @@ mod_same_server <- function(id, st, rx, event_dates = shiny::reactive(NULL)) {
       hw <- hourly_window(st()$hourly, w$start, w$end)
       shiny::validate(shiny::need(nrow(hw) > 0, "The station has no data in that window."))
       fl <- rx_flag(hw, r); vars <- rx_constrained(r)
+      ig <- rx_ignition(r)
+      fl <- fl[rx_in_ignition(fl, ig), ]                   # counts, runs and usable days use only the ignition period
       yrs <- sort(unique(fl$wyear))
       nd <- stats::setNames(hourly_window_ndays(yrs, w$start, w$end), yrs)
-      tw <- totals_window(fl, vars, nd, min_run = min_run(), hour_col = if (clock()) "hour_clock" else "hour")
+      tw <- totals_window(fl, vars, nd, min_run = min_run(), hour_col = if (clock()) "hour_clock" else "hour",
+                          hours_per_day = if (is.null(ig)) 24 else diff(ig))
       tw$days$text <- tip_window_days(tw$days, min_run(), clock = clock())
-      list(tw = tw, vars = vars, rx = r, labels = attr(hw, "window_days"), years = range(yrs), w = w)
+      list(tw = tw, vars = vars, rx = r, labels = attr(hw, "window_days"), years = range(yrs), w = w, ign = ig)
     })
 
     output$title <- shiny::renderUI({
@@ -99,13 +99,14 @@ mod_same_server <- function(id, st, rx, event_dates = shiny::reactive(NULL)) {
       r <- res(); ny <- diff(r$years) + 1
       plotly::plotlyOutput(ns("plot"), height = paste0(max(260, 60 + 22 * ny), "px"))
     })
-    output$plot <- plotly::renderPlotly(plot_year_day(res()$tw$days, res()$labels))
+    output$plot <- plotly::renderPlotly(plot_year_day(res()$tw$days, res()$labels,
+                                                      zmax = if (is.null(res()$ign)) 24 else diff(res()$ign)))
     output$caption <- shiny::renderUI({
       r <- res(); s <- r$tw$summary
       ir <- s[s$value == "in_rx", ]; ud <- s[s$value == "usable_days", ]
       shiny::div(class = "small text-muted mt-2",
-                 sprintf("%s, %d-%d. Each cell is one day; its colour is the hours in prescription that day. Outlined: usable days (a run of %d+ consecutive hours). In a typical year the window has %s hours in prescription and %s usable days.",
-                         r$w$label, r$years[1], r$years[2], min_run(), .totals_h(ir$median), .totals_h(ud$median)))
+                 sprintf("%s, %d-%d; hours counted: %s. Each cell is one day; its colour is the hours in prescription that day. Outlined: usable days (a run of %d+ consecutive hours; set the minimum window in the sidebar). In a typical year the window has %s hours in prescription and %s usable days.",
+                         r$w$label, r$years[1], r$years[2], rx_ignition_text(r$ign), min_run(), .totals_h(ir$median), .totals_h(ud$median)))
     })
 
     disp <- shiny::reactive(totals_window_display(res()$tw, res()$vars, min_run()))
@@ -128,7 +129,8 @@ mod_same_server <- function(id, st, rx, event_dates = shiny::reactive(NULL)) {
       content = function(file) {
         r <- res()
         lines <- totals_window_csv_lines(r$tw, st()$meta, st()$source$detail, r$rx, r$w$label, min_run(),
-                                         if (clock()) "run starts in clock time" else "local standard time (LST)", what)
+                                         paste0(if (clock()) "run starts in clock time" else "local standard time (LST)",
+                                                "; counted within the ignition period, ", rx_ignition_text(r$ign)), what)
         con <- file(file, open = "wb"); on.exit(close(con))
         writeBin(charToRaw("\xef\xbb\xbf"), con)       # UTF-8 byte-order mark, so Excel shows degree signs
         writeLines(enc2utf8(lines), con, sep = "\r\n", useBytes = TRUE)

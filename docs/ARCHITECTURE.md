@@ -76,6 +76,9 @@ from `min` to `max` that may wrap through north (e.g. 315 → 45). Variable meta
 lives in one table, `RX_VARS`, in `R/constants.R`. Adding NFDRS variables later means adding rows there and mapping their columns.
 
 - `rx_new(...)` / `rx_validate(rx)`
+- Settings ride on the prescription as attributes (`rx_with_settings()`): `rx_ignition(rx)` (clock hours or NULL),
+  `rx_min_window(rx)`, and the preset label. `rx_in_ignition(h, ignition)` selects the hours that count; modules filter
+  the flagged table with it before totals and runs. `rx_flag()` ignores the attributes.
 - `rx_flag(h, rx)`: adds one `pass_<var>` per constrained variable and `in_rx`, which is `TRUE` only if all of them pass.
   If any constrained variable is missing for an hour, that hour's `in_rx` is `NA`, so it drops out of both the numerator and the denominator and is counted as missing.
   Unconstrained variables are ignored, including when they're missing.

@@ -36,6 +36,42 @@ RX_EXAMPLE <- data.frame(
   min = c(40, 20, 2, 180, 0, 0),
   max = c(85, 55, 15, 270, 0, 1300),
   stringsAsFactors = FALSE)
+# Presets: DRAFT starting points for training, written by Claude for PFTC to
+# review -- not recommendations. Choosing one fills the sidebar; every value
+# stays editable. One row per preset x variable (on, min, max as in
+# RX_EXAMPLE; NA = no limit on that side), plus RX_PRESET_META for the
+# ignition period (clock time, start inclusive, end exclusive; NA = all day)
+# and the minimum usable window. "example" is RX_EXAMPLE itself.
+.rx_preset <- function(id, on, min, max)
+  data.frame(preset = id, var = RX_EXAMPLE$var, on = on, min = min, max = max, stringsAsFactors = FALSE)
+RX_PRESETS <- rbind(
+  .rx_preset("example", RX_EXAMPLE$on, RX_EXAMPLE$min, RX_EXAMPLE$max),
+  #                     temp   RH     wind   wdir   precip  solar
+  .rx_preset("grass",   on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
+                        min = c(40,    15,    4,   180,    0,     0),
+                        max = c(85,    40,   15,   270,    0,  1300)),
+  .rx_preset("pine",    on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
+                        min = c(35,    30,    4,   180,    0,     0),
+                        max = c(80,    55,   12,   270,    0,  1300)),
+  .rx_preset("conifer", on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
+                        min = c(35,    20,    2,   180,    0,     0),
+                        max = c(80,    45,   12,   270,    0,  1300)),
+  .rx_preset("piles",   on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE),
+                        min = c(-20,   25,    0,   180,    0,     0),
+                        max = c(60,   100,   10,   270,    1,  1300)))
+RX_PRESET_META <- data.frame(stringsAsFactors = FALSE,
+  preset     = c("example", "grass", "pine", "conifer", "piles"),
+  label      = c("Example (all day)", "Grass / rangeland", "Southern pine understory",
+                 "Western conifer understory", "Pile burning"),
+  ign_start  = c(NA, 10, 9, 9, 8),
+  ign_end    = c(NA, 17, 16, 17, 15),
+  min_window = c(4, 4, 5, 6, 3),
+  note       = c("The starting example: no ignition limit.",
+                 "Fine fuels: drier and windier is still workable, ignition mid-morning to late afternoon.",
+                 "Moister understory burns, moderate winds, a longer window.",
+                 "Heavier fuels: cooler, moderate RH, a long window to finish a unit.",
+                 "Winter piles: wet conditions and rain are fine, light winds."))
+
 RX_DEBOUNCE_MS <- 400   # wait this long after the last edit before recomputing
 
 # ---- hourly table --------------------------------------------------------------
@@ -115,6 +151,8 @@ CHART_OUT    <- "#c3ccd3"                  # out of prescription
 CHART_FAIL   <- CHART_HIGHLIGHT            # this limit failed at this hour
 CHART_NIGHT  <- "rgba(25, 45, 70, 0.07)"   # sunset to sunrise shading
 CHART_BAND   <- "rgba(11, 94, 128, 0.08)"  # the prescription range on a variable panel
+CHART_OUTSIDE_IGN <- "rgba(255, 255, 255, 0.65)"   # wash over cells / hours outside the ignition period
+CHART_IN_RX_OUT_IGN <- "#93b6c6"           # in prescription but outside the ignition period
 
 # ---- Same dates --------------------------------------------------------------------
 SAME_MAX_DAYS   <- 92                    # longest window of the year

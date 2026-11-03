@@ -28,6 +28,14 @@ It will be developed iteratively with PFTC feedback and could become operational
   since direction doesn't matter with no wind (the wind-speed limit still applies).
   NFDRS variables (1-hr/10-hr fuel moisture, ERC, BI) can be added later the same way.
   A preset also carries its **ignition period** (start/end hour) and a **minimum usable window** (hours).
+  *Built 2026-11-02:* five DRAFT presets for PFTC review (Example (all day), Grass / rangeland, Southern pine understory,
+  Western conifer understory, Pile burning) in `RX_PRESETS` / `RX_PRESET_META`. Choosing one fills every control; the
+  note under the menu says "Edited from this preset" once anything differs. The **ignition period is in local clock
+  time** (start inclusive, end exclusive; e.g. 09:00-17:00 is the hours starting 09 to 16), so at a daylight-saving
+  station it falls an hour earlier in LST in summer. Hour totals, longest runs and usable days count only the ignition
+  hours; the Climatology heatmap washes out cells outside it, the Past event strip shows in-prescription hours outside
+  it pale, and the Same dates colours run 0 to the period's length. The minimum usable window (sidebar) sets the
+  usable-day rule on Past event and Same dates.
 - **Dates:** the climatology period (fixed baseline, below), a past date range for the event view (up to about 14 days),
   and a forecast issue date/time for the synthetic forecast.
 
@@ -108,7 +116,7 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   Clock-time toggle at DST stations. The longest run stops at midnight (a day's window, not an overnight one).
 - **Same dates, many years** (built 2026-11-02): one window of the year, up to 92 days (default 15 Mar to 15 Apr; it may
   wrap through New Year, and a button copies the Past event dates), for every year in the record. A year x day heatmap:
-  colour = hours in prescription that day (0-24, the climatology ramp), outline = a **usable day**, one with a run of at
+  colour = hours in prescription that day (0-24, or 0 to the ignition period's length; the climatology ramp), outline = a **usable day**, one with a run of at
   least N consecutive hours in prescription (slider, default 4 h; the run stops at midnight). The hover gives the day's
   hours, its longest run and the limit that alone held out the most hours. Below: per year, hours in prescription,
   usable days, longest run and data coverage, then typical year, lowest and highest (years named; a year under 80%

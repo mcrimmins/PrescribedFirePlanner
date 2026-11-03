@@ -77,6 +77,23 @@ local({
            { ok <- !is.na(f$in_rx); two <- ok & !f$in_rx & !f$only_temperature & !f$only_relativeHumidity
              all(f$in_rx[ok] + f$only_temperature[ok] + f$only_relativeHumidity[ok] + two[ok] == 1) })
 
+    .section("D2. Ignition period and minimum window")
+    hh <- data.frame(hour_clock = c(9L, 10L, 16L, 17L, NA))
+    .check("D2.1 ignition 10-17 clock: 10 and 16 are in, 9 and 17 are not (end exclusive), unknown is not",
+           identical(rx_in_ignition(hh, c(10L, 17L)), c(FALSE, TRUE, TRUE, FALSE, FALSE)))
+    .check("D2.2 no ignition period: every hour counts", all(rx_in_ignition(hh, NULL)))
+    rs <- rx_with_settings(rx_new(temperature = c(40, 85)), ignition = c(10, 17), min_window = 5, preset = "Grass")
+    .check("D2.3 settings ride on the prescription as attributes", identical(rx_ignition(rs), c(10L, 17L)) && rx_min_window(rs) == 5 &&
+             identical(attr(rs, "preset"), "Grass"))
+    .check("D2.4 0-24 is the same as no ignition period", is.null(rx_ignition(rx_with_settings(rx_new(), ignition = c(0, 24)))))
+    .check("D2.5 a backwards period is refused", inherits(tryCatch(rx_with_settings(rx_new(), ignition = c(17, 10)), error = identity), "error"))
+    .check("D2.6 rx_flag ignores the attributes (same flags with or without)",
+           identical(rx_flag(h, rs)$in_rx, rx_flag(h, rx_new(temperature = c(40, 85)))$in_rx))
+    .check("D2.7 every preset is valid and has a label, an ignition period (or none) and a window",
+           all(vapply(unique(RX_PRESETS$preset), function(p) { r <- RX_PRESETS[RX_PRESETS$preset == p & RX_PRESETS$on, ]
+             !length(rx_problems(data.frame(var = r$var, min = r$min, max = r$max))) }, logical(1))) &&
+             setequal(RX_PRESET_META$preset, unique(RX_PRESETS$preset)) && all(RX_PRESET_META$min_window >= 1))
+
     .section("E. Problems are reported in plain words")
     pr <- function(...) rx_problems(data.frame(..., stringsAsFactors = FALSE))
     .check("E1 min above max", any(grepl("minimum is above the maximum", pr(var = "temperature", min = 90, max = 40), fixed = TRUE)))

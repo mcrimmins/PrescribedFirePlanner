@@ -185,7 +185,7 @@ totals_event <- function(flagged, rx_vars, hour_col = "hour") {
 
 .totals_day_label <- function(day) ifelse(day == "Total", "Total", format(as.Date(day, optional = TRUE), "%a %d %b"))
 
-totals_event_display <- function(ev, rx_vars, clock = FALSE) {
+totals_event_display <- function(ev, rx_vars, clock = FALSE, min_window = NA) {
   ir <- ev[ev$value == "in_rx", ]
   run <- ifelse(is.na(ir$longest_run) | ir$longest_run == 0, "none",
                 ifelse(is.na(ir$run_start), paste0(ir$longest_run, " h"),
@@ -195,6 +195,13 @@ totals_event_display <- function(ev, rx_vars, clock = FALSE) {
                      .totals_h(ir$n_missing), stringsAsFactors = FALSE)
   names(main) <- c("Day", "In prescription (h)", paste0("Longest run (", if (clock) "clock time" else "LST", ")"),
                    "Hours with data", "Hours excluded")
+  if (!is.na(min_window)) {
+    use <- ifelse(ir$longest_run >= min_window, "yes", "")
+    d <- ir$day != "Total"
+    use[!d] <- paste(sum(ir$longest_run[d] >= min_window, na.rm = TRUE), "days")
+    main <- cbind(main[, 1:3], stats::setNames(data.frame(use, stringsAsFactors = FALSE), sprintf("Usable (%d+ h)", min_window)),
+                  main[, 4:5])
+  }
   rows <- list()
   for (v in rx_vars) {
     lab <- RX_VARS$label[RX_VARS$var == v]
@@ -244,6 +251,7 @@ totals_csv_name <- function(meta, what = "summary", tab = "climatology") {
 # flagged: rx_flag() output of hourly_window() rows (has wyear, wday, date).
 # ndays: named integer, days in the window per wyear (hourly_window_ndays).
 # min_run: hours of consecutive in-prescription time that make a "usable day".
+# hours_per_day: hours a day can count (24, or the ignition period's length) for coverage.
 # Returns list(days, per_year, summary):
 #   days      one row per day: wyear, date, wday, n_true, n_valid, n_missing,
 #             longest, start_hour, usable, held (the limit that alone held out the
@@ -251,7 +259,7 @@ totals_csv_name <- function(meta, what = "summary", tab = "climatology") {
 #   per_year  totals_summary() input: one row per wyear x measure (period "Window"),
 #             measures in_rx, pass_/only_<var>, plus usable_days and longest_run
 #   summary   totals_summary(per_year)
-totals_window <- function(flagged, rx_vars, ndays, min_run = SAME_MIN_RUN_H, hour_col = "hour") {
+totals_window <- function(flagged, rx_vars, ndays, min_run = SAME_MIN_RUN_H, hour_col = "hour", hours_per_day = 24) {
   vals <- totals_measures(rx_vars); vals <- vals[vals %in% names(flagged)]
   dl <- clim_summarise(flagged, vals, by = c("wyear", "date"))
   runs <- clim_runs(flagged, "in_rx", by = c("wyear", "date"), hour_col = hour_col)
@@ -283,9 +291,9 @@ totals_window <- function(flagged, rx_vars, ndays, min_run = SAME_MIN_RUN_H, hou
   py <- rbind(py, extra)
   # coverage: usable in_rx hours over the hours the window has that year (missing rows count as missing)
   ir <- py[py$value == "in_rx", ]
-  expected <- 24 * ndays[as.character(ir$year)]
+  expected <- hours_per_day * ndays[as.character(ir$year)]
   cov <- stats::setNames(100 * ir$n_valid / expected, ir$year)
-  py$hours <- ifelse(py$value == "in_rx", 24 * ndays[as.character(py$year)], NA_real_)
+  py$hours <- ifelse(py$value == "in_rx", hours_per_day * ndays[as.character(py$year)], NA_real_)
   py$pct_usable <- unname(cov[as.character(py$year)])
   py$used <- !is.na(py$pct_usable) & py$pct_usable >= TOTALS_COVERAGE_MIN
   py$period <- factor(py$period, levels = "Window")

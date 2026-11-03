@@ -27,7 +27,7 @@
 # `highlight`, so the window shows by outline as well as by colour.
 plot_hour_heatmap <- function(cells, hour_col = "hour", x_col = "month", clock = FALSE,
                               colorbar_title = "% of hours<br>in prescription",
-                              threshold = NA, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
+                              threshold = NA, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT, outside = NULL) {
   xs <- sort(unique(cells[[x_col]])); hs <- 0:23
   z <- matrix(NA_real_, nrow = 24, ncol = length(xs)); tx <- matrix("", nrow = 24, ncol = length(xs))
   i <- match(cells[[hour_col]], hs); j <- match(cells[[x_col]], xs)
@@ -42,6 +42,14 @@ plot_hour_heatmap <- function(cells, hour_col = "hour", x_col = "month", clock =
       list(type = "rect", xref = "x", yref = "y", x0 = cc - 0.5, x1 = cc + 0.5, y0 = r - 0.5, y1 = r + 0.5,
            line = list(color = highlight, width = 2.5), fillcolor = "rgba(0,0,0,0)", layer = "above")
     })
+  }
+  # `outside`: data frame of x and hour (same columns as cells) for cells outside the
+  # ignition period; they are washed out so the ignition hours stand out
+  if (!is.null(outside) && nrow(outside)) {
+    oi <- match(outside[[hour_col]], hs) - 1; oj <- match(outside[[x_col]], xs) - 1
+    shapes <- c(lapply(which(!is.na(oi) & !is.na(oj)), function(k)
+      list(type = "rect", xref = "x", yref = "y", x0 = oj[k] - 0.5, x1 = oj[k] + 0.5, y0 = oi[k] - 0.5, y1 = oi[k] + 0.5,
+           line = list(width = 0), fillcolor = CHART_OUTSIDE_IGN, layer = "above")), shapes)
   }
   plotly::plot_ly(x = xlab, y = sprintf("%02d:00", hs), z = z, text = tx, type = "heatmap",
                   colorscale = .plot_colorscale(colors), zmin = 0, zmax = 100,
@@ -111,9 +119,10 @@ plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, cloc
   ylay  <- function(i) if (i == 1) "yaxis" else paste0("yaxis", i)
 
   st <- ifelse(is.na(flagged$in_rx), "unknown", ifelse(flagged$in_rx, "in", "out"))
+  if (!is.null(flagged$in_ign)) st[st == "in" & !flagged$in_ign] <- "in_out_ign"   # in prescription, outside ignition hours
   p <- plotly::plot_ly()
   p <- plotly::add_bars(p, x = x, y = rep(1, n), yaxis = "y", text = text, hoverinfo = "text", textposition = "none",
-                        marker = list(color = c(`in` = CHART_IN_RX, out = CHART_OUT, unknown = "#ffffff")[st],
+                        marker = list(color = c(`in` = CHART_IN_RX, in_out_ign = CHART_IN_RX_OUT_IGN, out = CHART_OUT, unknown = "#ffffff")[st],
                                       line = list(color = ifelse(st == "unknown", "#c3ccd3", "rgba(0,0,0,0)"), width = 1)),
                         showlegend = FALSE)
   shapes <- list()
@@ -183,8 +192,8 @@ plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, cloc
 # ---- Same dates: year x day heatmap ---------------------------------------------------
 # days: totals_window()$days with `text` (tip_window_days). labels: every day
 # of the window in order (attr "window_days"). Colour = hours in prescription
-# that day (0-24, same ramp as the climatology); usable days outlined.
-plot_year_day <- function(days, labels, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
+# that day (0 to zmax: 24, or the ignition period's hours; same ramp as the climatology); usable days outlined.
+plot_year_day <- function(days, labels, zmax = 24, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
   yrs <- sort(unique(days$wyear))
   z <- matrix(NA_real_, length(yrs), length(labels)); tx <- matrix("", length(yrs), length(labels))
   i <- match(days$wyear, yrs); j <- match(days$wday, labels)
@@ -198,10 +207,10 @@ plot_year_day <- function(days, labels, colors = CHART_SEQ, highlight = CHART_HI
   step <- if (length(labels) > 45) 7 else if (length(labels) > 20) 3 else 1
   tv <- labels[seq(1, length(labels), by = step)]
   plotly::plot_ly(x = labels, y = as.character(yrs), z = z, text = tx, type = "heatmap",
-                  colorscale = .plot_colorscale(colors), zmin = 0, zmax = 24,
+                  colorscale = .plot_colorscale(colors), zmin = 0, zmax = zmax,
                   xgap = 1, ygap = 1, hovertemplate = "%{text}<extra></extra>",
-                  colorbar = list(title = list(text = "Hours in<br>prescription", font = list(size = 12)),
-                                  tickvals = c(0, 6, 12, 18, 24), len = 0.9, outlinewidth = 0, thickness = 14)) |>
+                  colorbar = list(title = list(text = paste0("Hours in<br>prescription<br>(of ", zmax, ")"), font = list(size = 12)),
+                                  tickvals = unique(round(seq(0, zmax, length.out = 5))), len = 0.9, outlinewidth = 0, thickness = 14)) |>
     plotly::layout(xaxis = .plot_axis(title = "", type = "category", tickvals = tv, side = "top",
                                       categoryorder = "array", categoryarray = labels),
                    yaxis = .plot_axis(title = "", type = "category", autorange = "reversed",

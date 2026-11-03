@@ -72,6 +72,7 @@ mod_climatology_server <- function(id, st, rx) {
     # ---- hour totals (counts; independent of the hour toggle) --------------------------
     tot <- shiny::reactive({
       r <- rx(); fl <- flagged(); vars <- rx_constrained(r)
+      fl <- fl[rx_in_ignition(fl, rx_ignition(r)), ]       # counts use only the ignition period
       py <- totals_per_year(fl, vars, "month")
       list(per_year = py, summary = totals_summary(py), vars = vars, rx = r, years = range(fl$year))
     })
@@ -80,8 +81,8 @@ mod_climatology_server <- function(id, st, rx) {
       shiny::validate(shiny::need(st(), "Load a station to see hour totals."))
       t <- tot()
       shiny::div(class = "small text-muted mb-2",
-                 sprintf("Years %d-%d. Typical year = the median year; the range names the lowest and highest years. ",
-                         t$years[1], t$years[2]),
+                 sprintf("Years %d-%d. Hours counted: %s. Typical year = the median year; the range names the lowest and highest years. ",
+                         t$years[1], t$years[2], rx_ignition_text(rx_ignition(t$rx))),
                  if (tot_disp()$any_left_out)
                    sprintf("* Some years are left out of the median and range because under %d%% of that month's hours were usable (they still count in the total; see the per-year CSV).",
                            TOTALS_COVERAGE_MIN))
@@ -100,7 +101,8 @@ mod_climatology_server <- function(id, st, rx) {
       content = function(file) {
         t <- tot()
         lines <- totals_csv_lines(if (what == "summary") t$summary else t$per_year, st()$meta, st()$source$detail,
-                                  t$rx, t$years, "local standard time (LST)", what)
+                                  t$rx, t$years, paste0("local standard time (LST); counted within the ignition period, ",
+                                                        rx_ignition_text(rx_ignition(t$rx))), what)
         con <- file(file, open = "wb"); on.exit(close(con))
         writeBin(charToRaw("\xef\xbb\xbf"), con)       # UTF-8 byte-order mark, so Excel shows degree signs
         writeLines(enc2utf8(lines), con, sep = "\r\n", useBytes = TRUE)
@@ -120,6 +122,17 @@ mod_climatology_server <- function(id, st, rx) {
                            value = isTRUE(shiny::isolate(input$clock)))
     })
 
+    # month x hour cells outside the ignition period (clock time): washed out on the heatmap.
+    # In LST at a daylight-saving station the period sits an hour earlier in summer months.
+    outside_cells <- shiny::reactive({
+      ig <- rx_ignition(rx()); if (is.null(ig)) return(NULL)
+      g <- expand.grid(month = 1:12, h = 0:23)
+      b <- base()
+      shift <- tapply((b$hour_clock - b$hour) %% 24, b$month, stats::median)
+      clock_h <- if (hour_col() == "hour_clock") g$h else (g$h + shift[as.character(g$month)]) %% 24
+      out <- g[!(clock_h >= ig[1] & clock_h < ig[2]), ]
+      stats::setNames(out, c("month", hour_col()))
+    })
     output$heat <- plotly::renderPlotly({
       shiny::validate(shiny::need(st(), "Load a station (sidebar or Station tab) to see its climatology."))
       s <- summ()
@@ -128,7 +141,8 @@ mod_climatology_server <- function(id, st, rx) {
                          threshold = thr())
       ir <- s$long[s$long$value == "in_rx", ]
       cells$stat <- ir$stat[match(paste(cells$month, cells[[hour_col()]]), paste(ir$month, ir[[hour_col()]]))]
-      plot_hour_heatmap(cells, hour_col = hour_col(), clock = hour_col() == "hour_clock", threshold = thr())
+      plot_hour_heatmap(cells, hour_col = hour_col(), clock = hour_col() == "hour_clock", threshold = thr(),
+                        outside = outside_cells())
     })
 
     output$tbl <- shiny::renderTable({
@@ -151,7 +165,9 @@ mod_climatology_server <- function(id, st, rx) {
       shiny::div(class = "small text-muted mt-2",
                  shiny::p(sprintf("Years %d-%d. Each cell pools every hour in that month and hour across those years. Limits on: %s.%s",
                                   s$years[1], s$years[2], lim,
-                                  if (is.na(thr())) "" else sprintf(" Outlined: cells where at least %d%% of hours are in prescription.", round(thr())))),
+                                  paste0(if (is.na(thr())) "" else sprintf(" Outlined: cells where at least %d%% of hours are in prescription.", round(thr())),
+                                         if (is.null(rx_ignition(rx()))) "" else
+                                           sprintf(" Washed out: hours outside the ignition period (%s).", rx_ignition_text(rx_ignition(rx())))))),
                  shiny::p(sprintf("%s of %s hours (%s) are excluded because a limited variable is missing or was screened out; see Data quality.",
                                   format(excl, big.mark = ","), format(tot, big.mark = ","), tip_pct(excl / tot))))
     })

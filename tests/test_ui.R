@@ -52,7 +52,7 @@ local({
     }
     walk(htmltools::tagQuery(ui)$allTags())
     need <- c("main_nav", "station-card", "station-map",
-              paste0("rx-on_", RX_VARS$var),
+              paste0("rx-on_", RX_VARS$var), paste0("rx-", c("preset", "preset_note", "ign_on", "ign", "min_window")),
               paste0("rx-sl_", RX_VARS$var[RX_VARS$kind == "linear"]),
               paste0("rx-", c("min_", "max_"), "windDirection"),
               paste0("rx-msg_", RX_VARS$var),
@@ -60,7 +60,7 @@ local({
               "clim-totals_note", "clim-totals_main", "clim-totals_limit", "clim-csv_totals", "clim-csv_years",
               paste0("event-", c("dates", "back", "fwd", "controls", "plot_box", "caption", "totals_main", "totals_limit",
                                  "csv_daily", "csv_hourly")),
-              paste0("same-", c("window", "use_event", "min_run", "controls", "plot_box", "caption", "totals_note",
+              paste0("same-", c("window", "use_event", "controls", "plot_box", "caption", "totals_note",
                                 "totals_main", "totals_limit", "csv_years", "csv_days")),
               "quality-items", "quality-coverage", "quality-log")
     miss <- setdiff(need, ids)
@@ -90,8 +90,8 @@ local({
     .check("B10 the browser tab is titled Prescribed Fire Weather Explorer",
            grepl("<title>Prescribed Fire Weather Explorer</title>", as.character(htmltools::renderTags(ui)$head), fixed = TRUE) ||
              grepl("Prescribed Fire Weather Explorer", html, fixed = TRUE))
-    .check("B7 renders to HTML; example values are labelled as an example",
-           grepl("Example values, not a recommendation", html, fixed = TRUE))
+    .check("B7 renders to HTML; the preset menu offers every preset, starting with the example",
+           all(vapply(RX_PRESET_META$label, grepl, logical(1), x = html, fixed = TRUE)))
 
     .section("C. Prescription module (testServer)")
     ex_on <- .rx_example_limits()
@@ -106,6 +106,8 @@ local({
       do.call(session$setInputs, args)
       session$elapse(RX_DEBOUNCE_MS + 100)
       r0 <- session$returned()
+      .check("C0 the preset note says the values are drafts, not a recommendation",
+             grepl("not a recommendation", paste(unlist(output$preset_note), collapse = " "), fixed = TRUE))
       .check("C1 starts as the example prescription", identical(r0$var, ex_on$var) && identical(r0$min, ex_on$min) &&
                identical(r0$max, ex_on$max))
       .check("C1b precipitation 0-0: the handle at the slider's start means no lower limit, max stays 0",
@@ -127,6 +129,25 @@ local({
       .check("C5 turning on a wrapping wind sector (NW 315 -> NE 45) works", "windDirection" %in% rr$var &&
                rr$min[rr$var == "windDirection"] == 315 && rr$max[rr$var == "windDirection"] == 45)
       .check("C6 the compass menus offer 16 points", length(.RX_COMPASS) == 16 && all(c("315", "45", "180", "270") %in% .RX_COMPASS))
+      session$setInputs(preset = "example", ign_on = FALSE, min_window = 4); session$elapse(RX_DEBOUNCE_MS + 100)
+      .check("C6b the prescription carries the ignition period (none) and the minimum window (4 h)",
+             is.null(rx_ignition(session$returned())) && rx_min_window(session$returned()) == 4)
+      session$setInputs(ign_on = TRUE, ign = c(10, 17), min_window = 6); session$elapse(RX_DEBOUNCE_MS + 100)
+      rr <- session$returned()
+      .check("C6c turning on an ignition period 10:00-17:00 and a 6 h window reaches the tabs",
+             identical(rx_ignition(rr), c(10L, 17L)) && rx_min_window(rr) == 6)
+      .check("C6d ... and the preset note says the values were edited",
+             grepl("Edited from this preset", paste(unlist(output$preset_note), collapse = " "), fixed = TRUE))
+      pv <- .rx_preset_values("conifer"); a <- list(preset = "conifer", ign_on = TRUE, ign = pv$ign, min_window = pv$min_window)
+      for (i in seq_len(nrow(pv$rows))) {
+        v <- pv$rows$var[i]; a[[paste0("on_", v)]] <- pv$rows$on[i]
+        if (RX_VARS$kind[RX_VARS$var == v] == "linear") a[[paste0("sl_", v)]] <- c(pv$rows$min[i], pv$rows$max[i])
+        else { a[[paste0("min_", v)]] <- "180"; a[[paste0("max_", v)]] <- "270" }
+      }
+      do.call(session$setInputs, a); session$elapse(RX_DEBOUNCE_MS + 100)
+      .check("C6e controls holding exactly a preset's values are not 'edited'",
+             !grepl("Edited", paste(unlist(output$preset_note), collapse = " "), fixed = TRUE) &&
+               identical(rx_ignition(session$returned()), c(9L, 17L)) && rx_min_window(session$returned()) == 6)
       session$setInputs(on_temperature = FALSE); session$elapse(RX_DEBOUNCE_MS + 100)
       .check("C7 unticking a variable removes its limit", !"temperature" %in% session$returned()$var)
     })
@@ -166,6 +187,20 @@ local({
       })
     }
 
+    .section("D9. Climatology with an ignition period")
+    if (nrow(mf)) {
+      rxi <- rx_with_settings(rx0, ignition = c(10, 17))
+      shiny::testServer(mod_climatology_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rxi)), {
+        .check("D9.1 hours outside 10:00-17:00 are washed out: 12 months x 17 hours",
+               nrow(outside_cells()) == 12 * 17)
+        ti <- tot()$per_year; ti <- ti[ti$value == "in_rx" & ti$period == "Year", ]
+        .check("D9.2 the totals count only ignition hours (7 a day)",
+               all(ti$hours <= 366 * 7) && any(ti$hours >= 365 * 7 * 0.99), paste(range(ti$hours), collapse = "-"))
+        .check("D9.3 the totals note names the ignition period",
+               grepl("10:00-17:00 clock time", paste(unlist(output$totals_note), collapse = " "), fixed = TRUE))
+      })
+    }
+
     .section("E. Past event module (testServer, real station)")
     if (nrow(mf)) {
       shiny::testServer(mod_event_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rx0)), {
@@ -192,7 +227,7 @@ local({
     if (nrow(mf)) {
       shiny::testServer(mod_same_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rx0),
                                                      event_dates = shiny::reactive(as.Date(c("2015-04-01", "2015-04-07")))), {
-        session$setInputs(window = as.Date(c("2001-03-15", "2001-04-15")), min_run = 4)
+        session$setInputs(window = as.Date(c("2001-03-15", "2001-04-15")))
         session$elapse(RX_DEBOUNCE_MS + 100)
         r <- res()
         .check("F1 15 Mar-15 Apr: 32 days a year, every year of the record",

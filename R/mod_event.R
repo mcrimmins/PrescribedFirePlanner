@@ -34,7 +34,7 @@ mod_event_ui <- function(id) {
             shiny::actionButton(ns("fwd"), "Later \u25b6", class = "btn-sm btn-outline-secondary")),
           shiny::div(class = "mb-3 ms-2", shiny::uiOutput(ns("controls")))),
         shiny::div(class = "small text-muted mb-1",
-                   key(CHART_IN_RX, "in prescription"), key(CHART_OUT, "out"), key(CHART_FAIL, "this limit failed"),
+                   key(CHART_IN_RX, "in prescription"), key(CHART_IN_RX_OUT_IGN, "in, outside ignition hours"), key(CHART_OUT, "out"), key(CHART_FAIL, "this limit failed"),
                    key("#ffffff", "not known (missing data)", border = TRUE), key("rgba(25,45,70,0.18)", "night"),
                    key("rgba(11,94,128,0.25)", "prescription range")),
         shiny::uiOutput(ns("plot_box")),
@@ -90,9 +90,11 @@ mod_event_server <- function(id, st, rx) {
       h <- st()$hourly; h <- h[h$date >= d[1] & h$date <= d[2], ]
       fl <- rx_flag(h[order(h$date, h$hour), ], r)
       vars <- rx_constrained(r)
+      fl$in_ign <- rx_in_ignition(fl, rx_ignition(r))
       list(fl = fl, rx = r, vars = vars, dates = d,
            show = c(.EVENT_ALWAYS, intersect(c("precipitation", "solarRadiation"), vars)),
-           totals = totals_event(fl, vars, hour_col = if (clock()) "hour_clock" else "hour"))
+           # counts, runs and usable days use only the ignition period
+           totals = totals_event(fl[fl$in_ign, ], vars, hour_col = if (clock()) "hour_clock" else "hour"))
     })
 
     output$title <- shiny::renderUI({
@@ -119,15 +121,18 @@ mod_event_server <- function(id, st, rx) {
     })
     output$caption <- shiny::renderUI({
       e <- ev(); ir <- e$totals[e$totals$value == "in_rx" & e$totals$day == "Total", ]
+      ig <- rx_ignition(e$rx)
       shiny::div(class = "small text-muted mt-2",
-                 sprintf("%s to %s: %s of %s hours with data in prescription (%s); %s not known. Hover any hour for its values and the limit that failed. Drag across the chart to zoom; double-click to reset.",
+                 sprintf("%s to %s%s: %s of %s hours with data in prescription (%s); %s not known. Hover any hour for its values and the limit that failed. Drag across the chart to zoom; double-click to reset.",
                          format(e$dates[1], "%d %b %Y"), format(e$dates[2], "%d %b %Y"),
+                         if (is.null(ig)) "" else paste0(", ignition period ", rx_ignition_text(ig),
+                                                         " (in-prescription hours outside it are pale in the strip)"),
                          format(ir$n_true, big.mark = ","), format(ir$n_valid, big.mark = ","),
                          tip_pct(if (ir$n_valid) ir$n_true / ir$n_valid else NA), tip_hours(ir$n_missing)))
     })
 
-    disp <- shiny::reactive(totals_event_display(ev()$totals, ev()$vars, clock = clock()))
-    output$totals_main <- shiny::renderTable(disp()$main, striped = TRUE, spacing = "xs", align = "lrlrr")
+    disp <- shiny::reactive(totals_event_display(ev()$totals, ev()$vars, clock = clock(), min_window = rx_min_window(ev()$rx)))
+    output$totals_main <- shiny::renderTable(disp()$main, striped = TRUE, spacing = "xs", align = "lrlcrr")
     output$totals_limit <- shiny::renderTable({
       d <- disp()$by_limit
       shiny::validate(shiny::need(nrow(d) > 0, "No limits are on, so every hour counts."))
@@ -138,8 +143,11 @@ mod_event_server <- function(id, st, rx) {
       filename = function() totals_csv_name(st()$meta, what, tab = "past-event"),
       content = function(file) {
         e <- ev()
+        hl <- paste0(if (clock()) "clock time (run starts) and LST" else "local standard time (LST)",
+                     if (what == "daily") paste0("; counted within the ignition period, ", rx_ignition_text(rx_ignition(e$rx))) else
+                       "; in_ign marks the ignition period")
         lines <- totals_event_csv_lines(if (what == "daily") e$totals else e$fl, st()$meta, st()$source$detail,
-                                        e$rx, e$dates, if (clock()) "clock time (run starts) and LST" else "local standard time (LST)", what)
+                                        e$rx, e$dates, hl, what)
         con <- file(file, open = "wb"); on.exit(close(con))
         writeBin(charToRaw("\xef\xbb\xbf"), con)       # UTF-8 byte-order mark, so Excel shows degree signs
         writeLines(enc2utf8(lines), con, sep = "\r\n", useBytes = TRUE)

@@ -112,3 +112,35 @@ rx_flag <- function(h, rx) {
   attr(h, "rx_vars") <- vars
   h
 }
+
+# ---- ignition period and minimum window ----------------------------------------------
+# mod_rx_server() returns the prescription data frame with two attributes:
+#   "ignition"    c(start, end) clock hours (start inclusive, end exclusive), or NULL for all day
+#   "min_window"  hours of consecutive in-prescription time that make a usable day
+# The ignition period is in local CLOCK time (what a burn plan uses), so at a
+# daylight-saving station it is an hour earlier in LST in summer.
+rx_ignition <- function(rx) attr(rx, "ignition")
+rx_min_window <- function(rx) { m <- attr(rx, "min_window"); if (is.null(m)) SAME_MIN_RUN_H else m }
+
+rx_with_settings <- function(rx, ignition = NULL, min_window = SAME_MIN_RUN_H, preset = NA_character_) {
+  if (!is.null(ignition)) {
+    ignition <- as.integer(ignition)
+    if (length(ignition) != 2 || anyNA(ignition) || ignition[1] < 0 || ignition[2] > 24 || ignition[1] >= ignition[2])
+      stop("ignition period must be c(start, end) clock hours with 0 <= start < end <= 24", call. = FALSE)
+    if (ignition[1] == 0 && ignition[2] == 24) ignition <- NULL     # all day is no limit
+  }
+  attr(rx, "ignition") <- ignition
+  attr(rx, "min_window") <- as.integer(min_window)
+  attr(rx, "preset") <- preset
+  rx
+}
+
+# TRUE for hours inside the ignition period (all TRUE when there is none).
+rx_in_ignition <- function(h, ignition) {
+  if (is.null(ignition)) return(rep(TRUE, nrow(h)))
+  hc <- h$hour_clock
+  !is.na(hc) & hc >= ignition[1] & hc < ignition[2]
+}
+
+rx_ignition_text <- function(ignition)
+  if (is.null(ignition)) "all day" else sprintf("%02d:00-%02d:00 clock time", ignition[1], ignition[2])

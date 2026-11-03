@@ -138,7 +138,11 @@ tip_event_hours <- function(flagged, rx, clock = FALSE, obs_minute = NA_integer_
   status <- character(n)
   for (i in seq_len(n)) {
     ir <- flagged$in_rx[i]
-    if (isTRUE(ir)) { status[i] <- "<b>In prescription</b>"; next }
+    if (isTRUE(ir)) {
+      status[i] <- if (!is.null(flagged$in_ign) && isFALSE(flagged$in_ign[i])) "<b>In prescription</b> (outside the ignition period)"
+                   else "<b>In prescription</b>"
+      next
+    }
     fails <- character(0); unknown <- character(0)
     for (v in vars) {
       p <- flagged[[paste0("pass_", v)]][i]

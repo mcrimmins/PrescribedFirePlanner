@@ -31,6 +31,9 @@ app_css <- "
 .rx-var .form-group, .rx-var .shiny-input-container { margin-bottom: 0; }
 .rx-var .checkbox { margin: 0; }
 .rx-var .checkbox label { font-size: .875rem; font-weight: 500; }
+.rx-label { font-size: .875rem; font-weight: 500; margin-bottom: .1rem; }
+.rx-preset select { font-size: .85rem; padding-top: .2rem; padding-bottom: .2rem; }
+.rx-preset .form-group { margin-bottom: .25rem; }
 .rx-body { padding-left: 1.5rem; }
 .rx-body .irs { margin-top: .15rem; }
 .rx-var + .rx-var { margin-top: .1rem; }

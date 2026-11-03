@@ -135,6 +135,9 @@ local({
     .check("F4 display: a row per day + Total; runs read like '5 h, 10:00-15:00' or 'none'",
            nrow(de$main) == 4 && all(grepl("^([0-9]+ h, [0-9]{2}:00-[0-9]{2}:00|none|[0-9]+ h \\(longest day\\))$", de$main[[3]])),
            paste(de$main[[3]], collapse = " | "))
+    dm <- totals_event_display(te, vars, min_window = 4)
+    .check("F4b with a minimum window, a 'Usable (4+ h)' column marks the days and the Total counts them",
+           "Usable (4+ h)" %in% names(dm$main) && grepl(" days$", tail(dm$main[["Usable (4+ h)"]], 1)))
     .check("F5 by-limit table: days + Total across", identical(names(de$by_limit), c("Limit", "Hours", "10 Mar", "11 Mar", "12 Mar", "Total")),
            paste(names(de$by_limit), collapse = " | "))
     ld <- totals_event_csv_lines(te, meta, "test data", rx, as.Date(c("2005-03-10", "2005-03-12")), "LST", "daily")
