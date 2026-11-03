@@ -286,3 +286,78 @@ plot_doy_heatmap <- function(cells, hour_col = "hour", clock = FALSE, sun = NULL
                                               "zoomIn2d", "zoomOut2d", "resetScale2d"),
                    toImageButtonOptions = list(format = "png", filename = "rx_day_of_year", scale = 2))
 }
+
+# ---- Climatology by variable: one hour x day-of-year panel ---------------------------------
+# cells: tip_var_cells() output (doy, hour column, stat = mean value, pass = share passing, text).
+# Colour = the share of hours that pass THIS limit, on the same ramp and scale as
+# the main chart, so the panels show which limit closes the window, when. The
+# mean value is in the tooltip. threshold: the same orange contour as the main chart.
+plot_var_doy <- function(cells, var, hour_col = "hour", sun = NULL, clock = FALSE, threshold = NA,
+                         highlight = CHART_HIGHLIGHT) {
+  x <- sort(unique(cells$doy)); y <- 0:23 + 0.5
+  z <- matrix(NA_real_, 24, length(x)); tx <- matrix("", 24, length(x))
+  ij <- cbind(cells[[hour_col]] + 1, match(cells$doy, x))
+  z[ij] <- 100 * cells$pass
+  tx[ij] <- cells$text
+  p <- plotly::plot_ly() |>
+    plotly::add_heatmap(x = x, y = y, z = z, text = tx, hovertemplate = "%{text}<extra></extra>",
+                        colorscale = .plot_colorscale(CHART_SEQ), zmin = 0, zmax = 100,
+                        colorbar = list(title = list(text = "% of hours<br>within this limit", font = list(size = 11)),
+                                        len = 0.95, thickness = 12, outlinewidth = 0, ticksuffix = "%",
+                                        tickvals = c(0, 50, 100)))
+  if (!is.na(threshold))
+    p <- plotly::add_contour(p, x = x, y = y, z = z, hoverinfo = "skip", showscale = FALSE, showlegend = FALSE,
+                             contours = list(start = threshold, end = threshold, size = 1, coloring = "none"),
+                             line = list(color = highlight, width = 1.6))
+  if (!is.null(sun)) for (col in c("sunrise", "sunset"))
+    p <- plotly::add_lines(p, x = sun$doy, y = sun[[col]], line = list(color = "#e0a100", width = 1.1),
+                           hoverinfo = "skip", showlegend = FALSE)
+  first <- as.integer(format(as.Date(sprintf("2001-%02d-01", 1:12)), "%j"))
+  p |>
+    plotly::layout(xaxis = .plot_axis(title = "", range = c(0.5, CLIM_DOY_N + 0.5), tickvals = first, ticktext = month.abb),
+                   yaxis = .plot_axis(title = if (clock) "Hour (clock)" else "Hour (LST)", range = c(24, 0),
+                                      tickvals = seq(0, 18, 6), ticktext = sprintf("%02d:00", seq(0, 18, 6))),
+                   margin = list(l = 60, r = 10, t = 10, b = 25),
+                   plot_bgcolor = "rgba(0,0,0,0)", paper_bgcolor = "rgba(0,0,0,0)",
+                   hoverlabel = list(bgcolor = "white", bordercolor = "#cccccc", font = list(size = 13, color = "#222222"),
+                                     align = "left")) |>
+    plotly::config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoom2d", "pan2d", "select2d", "lasso2d", "autoScale2d",
+                                                                    "zoomIn2d", "zoomOut2d", "resetScale2d"),
+                   toImageButtonOptions = list(format = "png", filename = paste0("rx_", var, "_by_day"), scale = 2))
+}
+
+# ---- Climatology: daily range of a variable through the year -------------------------------
+# q: clim_quantiles() rows for one variable; text: tip_daily_range(). The
+# prescription range is shaded across the year; 10-90 and 25-75 bands, median line.
+plot_daily_range <- function(q, var, lo = NA, hi = NA, text = NULL, band = CHART_IN_RX) {
+  m <- RX_VARS[RX_VARS$var == var, ]
+  rng <- range(c(q$q10, q$q90, lo, hi), na.rm = TRUE); pad <- diff(rng) * 0.06
+  yr <- c(max(m$slider_min, rng[1] - pad), rng[2] + pad)
+  shapes <- list()
+  if (!is.na(lo) || !is.na(hi))
+    shapes <- list(list(type = "rect", xref = "paper", x0 = 0, x1 = 1, yref = "y",
+                        y0 = if (is.na(lo)) yr[1] else lo, y1 = if (is.na(hi)) yr[2] else hi,
+                        fillcolor = CHART_BAND, line = list(width = 0), layer = "below"))
+  for (b in c(lo, hi)) if (!is.na(b))
+    shapes <- c(shapes, list(list(type = "line", xref = "paper", x0 = 0, x1 = 1, yref = "y", y0 = b, y1 = b,
+                                  line = list(color = band, width = 1, dash = "dot"), layer = "below")))
+  first <- as.integer(format(as.Date(sprintf("2001-%02d-01", 1:12)), "%j"))
+  plotly::plot_ly(q, x = ~doy) |>
+    plotly::add_ribbons(ymin = ~q10, ymax = ~q90, fillcolor = "rgba(120,130,140,0.18)", line = list(width = 0),
+                        hoverinfo = "skip", name = "8 in 10 hours") |>
+    plotly::add_ribbons(ymin = ~q25, ymax = ~q75, fillcolor = "rgba(120,130,140,0.35)", line = list(width = 0),
+                        hoverinfo = "skip", name = "Middle half") |>
+    plotly::add_lines(y = ~q50, line = list(color = "#333333", width = 2), text = text, hoverinfo = "text", name = "Median") |>
+    plotly::layout(xaxis = .plot_axis(title = "", range = c(1, CLIM_DOY_N), tickvals = first, ticktext = month.abb),
+                   yaxis = .plot_axis(title = paste0(c(temperature = "Temperature", relativeHumidity = "RH", windSpeed = "Wind",
+                                                       solarRadiation = "Solar")[[var]], " (", m$units, ")"), range = yr,
+                                      showgrid = TRUE, gridcolor = "#eeeeee"),
+                   shapes = shapes, hovermode = "x", showlegend = FALSE,
+                   margin = list(l = 60, r = 10, t = 10, b = 25),
+                   plot_bgcolor = "rgba(0,0,0,0)", paper_bgcolor = "rgba(0,0,0,0)",
+                   hoverlabel = list(bgcolor = "white", bordercolor = "#cccccc", font = list(size = 13, color = "#222222"),
+                                     align = "left")) |>
+    plotly::config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoom2d", "pan2d", "select2d", "lasso2d", "autoScale2d",
+                                                                    "zoomIn2d", "zoomOut2d", "resetScale2d"),
+                   toImageButtonOptions = list(format = "png", filename = paste0("rx_", var, "_daily_range"), scale = 2))
+}

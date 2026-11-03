@@ -175,6 +175,13 @@ local({
                grepl("heatmap", dj, fixed = TRUE) && grepl("Sunrise / sunset", dj, fixed = TRUE) && grepl("contour", dj, fixed = TRUE))
         .check("D3c day-of-year summary: 365 days x 24 hours of in_rx", sum(summ_doy()$value == "in_rx") == 365 * 24)
         .check("D3d the widget stays a sensible size (under 4 MB)", nchar(dj) < 4e6, sprintf("%.1f MB", nchar(dj) / 1e6))
+        bv <- paste(output$byvar_temperature, collapse = "")
+        .check("D3e a by-variable panel renders for each limit on (temperature shown)",
+               grepl("heatmap", bv, fixed = TRUE) && grepl("within this limit", bv, fixed = TRUE) &&
+                 grepl("byvar_relativeHumidity", paste(output$byvar_box, collapse = ""), fixed = TRUE))
+        rg <- paste(output$range_relativeHumidity, collapse = "")
+        .check("D3f the daily range chart renders with median and bands", grepl("Median", rg, fixed = TRUE) && grepl("Middle half", rg, fixed = TRUE) && grepl("8 in 10 hours", rg, fixed = TRUE))
+        .check("D3g no daily range for precipitation (always 0)", !"precipitation" %in% range_vars())
         tm <- paste(output$totals_main, collapse = "")
         .check("D5 the totals table renders, 12 months + Year", grepl("<table", tm, fixed = TRUE) && grepl("Year", tm, fixed = TRUE) &&
                  all(vapply(month.abb, grepl, logical(1), x = tm, fixed = TRUE)))

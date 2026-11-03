@@ -28,6 +28,15 @@ mod_climatology_ui <- function(id) {
       bslib::navset_underline(id = ns("view"),
         bslib::nav_panel("Day of year", value = "doy", plotly::plotlyOutput(ns("doy"), height = "600px")),
         bslib::nav_panel("Month \u00d7 hour", value = "month", plotly::plotlyOutput(ns("heat"), height = "560px")),
+        bslib::nav_panel("By variable", value = "byvar",
+                         shiny::div(class = "small text-muted my-2",
+                                    "Each limit on its own, by hour and day of year (\u00b17 days): the share of hours that pass that one limit, ",
+                                    "on the same colours as the main chart. Where a panel is pale, that limit is closing the window. ",
+                                    "The orange line is your outline threshold; hover for the mean value."),
+                         shiny::uiOutput(ns("byvar_box"))),
+        bslib::nav_panel("Daily ranges", value = "ranges",
+                         shiny::uiOutput(ns("ranges_note")),
+                         shiny::uiOutput(ns("ranges_box"))),
         bslib::nav_panel("Table", shiny::div(class = "small text-muted my-2",
                                              "% of hours in prescription, by month (columns) and hour (rows). Bold: at or above the outline threshold."),
                          shiny::tableOutput(ns("tbl")))),
@@ -156,6 +165,65 @@ mod_climatology_server <- function(id, st, rx) {
       }
       plot_doy_heatmap(cells, hour_col = hour_col(), clock = hour_col() == "hour_clock", sun = sun, ign = ign,
                        threshold = thr())
+    })
+
+    # ---- by variable: one panel per limit ----------------------------------------------------
+    lim_of <- function(v) { r <- rx(); i <- which(r$var == v); c(r$min[i], r$max[i]) }
+    var_title <- function(v) {
+      m <- RX_VARS[RX_VARS$var == v, ]; l <- lim_of(v)
+      shiny::h6(class = "mt-3 mb-1", m$label, shiny::span(class = "text-muted fw-normal",
+                paste0(" \u2014 your limit: ", tip_limit_text(v, l[1], l[2]))))
+    }
+    output$byvar_box <- shiny::renderUI({
+      shiny::validate(shiny::need(st(), "Load a station first."))
+      vars <- rx_constrained(rx())
+      shiny::validate(shiny::need(length(vars) > 0, "Turn on at least one limit in the sidebar."))
+      shiny::tagList(lapply(vars, function(v) shiny::tagList(var_title(v), plotly::plotlyOutput(ns(paste0("byvar_", v)), height = "260px"))))
+    })
+    for (v0 in RX_VARS$var) local({
+      v <- v0
+      output[[paste0("byvar_", v)]] <- plotly::renderPlotly({
+        shiny::req(v %in% rx_constrained(rx()))
+        s <- summ_doy(); s <- s[s$doy %in% seq(1, CLIM_DOY_N, by = CLIM_DOY_STEP), ]
+        l <- lim_of(v)
+        cells <- tip_var_cells(s, v, hour_col = hour_col(), lo = l[1], hi = l[2], sun = sun_doy())
+        plot_var_doy(cells, v, hour_col = hour_col(), sun = sun_doy(), clock = hour_col() == "hour_clock", threshold = thr())
+      })
+    })
+
+    # ---- daily ranges: percentiles of the hours that count (ignition period, else all day) ----
+    range_vars <- shiny::reactive(intersect(rx_constrained(rx()), c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")))
+    ranges <- shiny::reactive({
+      r <- rx(); fl <- flagged(); fl <- fl[rx_in_ignition(fl, rx_ignition(r)), ]
+      vars <- range_vars(); shiny::req(length(vars))
+      list(q = clim_quantiles(fl, vars),
+           pass = clim_summarise(fl, paste0("pass_", vars), by = "doy", smooth_days = CLIM_SMOOTH_DAYS),
+           hours = if (is.null(rx_ignition(r))) "all hours" else paste("hours", rx_ignition_text(rx_ignition(r))))
+    })
+    output$ranges_note <- shiny::renderUI({
+      shiny::req(st())
+      ig <- rx_ignition(rx())
+      shiny::div(class = "small text-muted my-2",
+                 "The spread of hourly values through the year (\u00b17 days, 2005-2025): the line is the median, the dark band the middle half ",
+                 "of hours, the light band 8 in 10 hours; your limits are shaded. ",
+                 if (is.null(ig)) "All 24 hours count; set an ignition period in the sidebar to see just the burning hours."
+                 else paste0("Only hours in the ignition period count (", rx_ignition_text(ig), ")."))
+    })
+    output$ranges_box <- shiny::renderUI({
+      shiny::validate(shiny::need(st(), "Load a station first."))
+      vars <- range_vars()
+      shiny::validate(shiny::need(length(vars) > 0, "Turn on a temperature, RH, wind speed or solar radiation limit to see its daily range."))
+      shiny::tagList(lapply(vars, function(v) shiny::tagList(var_title(v), plotly::plotlyOutput(ns(paste0("range_", v)), height = "240px"))))
+    })
+    for (v0 in c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")) local({
+      v <- v0
+      output[[paste0("range_", v)]] <- plotly::renderPlotly({
+        shiny::req(v %in% range_vars())
+        rg <- ranges(); q <- rg$q[rg$q$value == v, ]
+        ps <- rg$pass[rg$pass$value == paste0("pass_", v), ]
+        l <- lim_of(v)
+        plot_daily_range(q, v, l[1], l[2], text = tip_daily_range(q, v, ps$stat[match(q$doy, ps$doy)], rg$hours))
+      })
     })
 
     # month x hour cells outside the ignition period (clock time): washed out on the heatmap.

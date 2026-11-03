@@ -133,6 +133,7 @@ tip_compass <- function(deg) {
 .tip_limit <- function(var, lo, hi) {
   f <- function(x) sub("^n/a$", "", tip_value(var, x))
   if (var == "windDirection") return(sprintf("%s to %s", tip_compass(lo), tip_compass(hi)))
+  if (var == "precipitation" && is.na(lo) && isTRUE(hi == 0)) return("no rain")
   if (is.na(lo)) paste("up to", f(hi)) else if (is.na(hi)) paste("at least", f(lo)) else paste(f(lo), "to", f(hi))
 }
 
@@ -188,4 +189,44 @@ tip_window_days <- function(days, min_run, clock = FALSE) {
   paste0("<b>", format(days$date, "%a %d %b %Y"), "</b>",
          "<br>In prescription: <b>", days$n_true, "</b> of ", tip_hours(days$n_valid), " with data",
          "<br>", run, use, held, miss)
+}
+
+# ---- Climatology by variable ----------------------------------------------------------
+# A limit in words for captions and tooltips, e.g. "20% to 45%" or "at least 4 mph".
+tip_limit_text <- function(var, lo, hi) .tip_limit(var, lo, hi)
+
+# long: clim_summarise(by = c("doy", hour_col), smooth) with the variable (mean)
+# and pass_<var>. One tooltip per cell of that variable's panel.
+tip_var_cells <- function(long, var, hour_col = "hour", lo = NA, hi = NA, sun = NULL) {
+  clock <- hour_col == "hour_clock"
+  kind <- RX_VARS$kind[RX_VARS$var == var]
+  pv <- long[long$value == paste0("pass_", var), ]
+  base <- if (var %in% long$value) long[long$value == var, ] else pv
+  key <- paste(base$doy, base[[hour_col]])
+  ps <- pv$stat[match(key, paste(pv$doy, pv[[hour_col]]))]
+  when <- paste0("<b>", format(as.Date("2001-01-01") + base$doy - 1, "%d %b"), " (\u00b1", CLIM_SMOOTH_DAYS, " days), ",
+                 tip_hour_label(base[[hour_col]], clock), "</b>")
+  val <- if (var %in% long$value)
+    paste0("<br>Mean ", .tip_short[[var]], ": <b>", vapply(base$stat, function(x) tip_value(var, x), ""), "</b>") else ""
+  lim <- if (var == "windDirection") paste0("in the sector (", .tip_limit(var, lo, hi), ")")
+         else paste0("within your limit (", .tip_limit(var, lo, hi), ")")
+  pass <- if (nrow(pv)) paste0("<br>Hours ", lim, ": <b>", tip_pct(ps), "</b> of ", tip_hours(base$n_valid)) else ""
+  sunl <- if (!is.null(sun)) { k <- match(base$doy, sun$doy)
+    paste0("<br>Sunrise ", sun_fmt_hm(sun$sunrise[k]), ", sunset ", sun_fmt_hm(sun$sunset[k])) } else ""
+  out <- base[, c("doy", hour_col)]
+  out$stat <- base$stat; out$pass <- ps
+  out$text <- paste0(when, val, pass, sunl)
+  rownames(out) <- NULL
+  out
+}
+
+# q: clim_quantiles() rows for one variable; pass: share of those hours within the limit by doy.
+tip_daily_range <- function(q, var, pass = NULL, hours_label = "all hours") {
+  f <- function(x) vapply(x, function(v) tip_value(var, v), "")
+  paste0("<b>", format(as.Date("2001-01-01") + q$doy - 1, "%d %b"), " (\u00b1", CLIM_SMOOTH_DAYS, " days, ", hours_label, ")</b>",
+         "<br>Median ", .tip_short[[var]], ": <b>", f(q$q50), "</b>",
+         "<br>Middle half of hours: ", f(q$q25), " to ", f(q$q75),
+         "<br>8 in 10 hours: ", f(q$q10), " to ", f(q$q90),
+         if (!is.null(pass)) paste0("<br>Within your limit: <b>", tip_pct(pass), "</b> of ", tip_hours(q$n))
+         else paste0("<br>From ", tip_hours(q$n)))
 }

@@ -90,8 +90,16 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   - **Per-variable panels on the same axes:** the hourly climatology of each constrained variable (e.g. median RH)
     with the prescription limits drawn as contour lines, so trainees can see which limit closes the window, at which hours and in which season.
     Wind direction is shown as the % of hours in the allowed sector.
+    *Built 2026-11-02 ("By variable" view), changed in the build:* each panel is coloured by the **share of hours that pass
+    that one limit**, on the main chart's ramp and 0-100% scale, with the same threshold contour; the mean value is in
+    the hover. Mean values with limit contours looked right but misled (a mean wind of 7 mph sits inside a 2-12 mph limit
+    even when a third of the hours fail), while the share shows directly which limit closes the window, when.
   - **Daily range charts:** for each variable, the median with 25th–75th and 10th–90th percentile bands
     through the year, with the prescription range shaded on top.
+    *Built 2026-11-02 ("Daily ranges" view):* percentiles of the hourly values over a ±7-day window, from the ignition
+    period's hours when one is set (else all 24 hours, and the note says so); temperature, RH, wind speed and solar
+    radiation (not precipitation, which is nearly always 0). Hover: median, middle half, 8 in 10 hours, share within
+    the limit.
   - A month × hour table of the same percentages for quick reading.
   - Daily window length: the longest consecutive run of in-prescription hours within the ignition period,
     summarized by month and week as the median run and the % of days with a run ≥ the minimum usable window.

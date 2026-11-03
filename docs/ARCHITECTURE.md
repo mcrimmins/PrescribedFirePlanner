@@ -115,8 +115,9 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
 - `clim_runs(flagged, value = "in_rx", by = "date", hour_col = "hour")`: the longest run of consecutive TRUE hours per
   group and its start hour. A FALSE or NA hour ends a run; runs stop at group boundaries (midnight for `by = "date"`).
   Used by the Past event daily table, and by the window-length climatology later.
-- The one planned addition is percentiles for the daily range charts in v1. `clim_quantiles()` will share the same
-  grouping and wrap-around window helper (`.clim_window()`) rather than repeat it.
+- `clim_quantiles(flagged, value, probs, smooth_days)`: percentiles by day of year over the same wrap-around ±7-day
+  window (the daily range charts). Percentiles can't be built from sums, so it gathers the values per window instead of
+  using `.clim_window()`; about 0.5 s for four variables at a full station. Filter rows first to choose the hours.
 
 ### Data quality (`R/quality.R`) and sun times (`R/sun.R`)
 Written once, used by the Data quality tab **and** by the network tests (which currently carry their own copies in

@@ -142,6 +142,7 @@ CHART_RAMPS <- list(
 CHART_RAMP <- "blues"
 CHART_SEQ <- CHART_RAMPS[[CHART_RAMP]]$colors
 CHART_HIGHLIGHT <- CHART_RAMPS[[CHART_RAMP]]$highlight
+CHART_VALUE_SEQ <- CHART_RAMPS$ylgnbu$colors   # variable values (by-variable panels), distinct from the share ramp
 CHART_CELL_GAP <- 2    # px between heatmap cells
 CLIM_HIGHLIGHT_PCT <- 50   # default outline threshold: cells at or above this % of hours in prescription
 

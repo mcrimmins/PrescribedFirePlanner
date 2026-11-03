@@ -134,3 +134,30 @@ clim_runs <- function(flagged, value = "in_rx", by = "date", hour_col = "hour") 
   rownames(res) <- NULL
   res
 }
+
+# ---- percentiles through the year ------------------------------------------------------
+#   clim_quantiles(flagged, value, probs = c(.1, .25, .5, .75, .9), smooth_days = CLIM_SMOOTH_DAYS)
+# For each day of the year, percentiles of every valid hourly value within the
+# centred window of 2 * smooth_days + 1 days (wrapping Dec -> Jan), across all
+# years. Filter the rows first to choose which hours count (e.g. the ignition
+# period). Returns doy, value, n (values behind it), and q10, q25, q50, ...
+# Shares the wrap-around window idea with clim_summarise(); percentiles can't
+# be built from sums, so this one gathers the values.
+clim_quantiles <- function(flagged, value, probs = c(0.1, 0.25, 0.5, 0.75, 0.9), smooth_days = CLIM_SMOOTH_DAYS) {
+  miss <- setdiff(c(value, "doy"), names(flagged))
+  if (length(miss)) stop("clim_quantiles(): no column(s) ", paste(miss, collapse = ", "), call. = FALSE)
+  N <- CLIM_DOY_N
+  out <- lapply(value, function(v) {
+    x <- as.numeric(flagged[[v]]); ok <- !is.na(x)
+    byd <- split(x[ok], factor(flagged$doy[ok], levels = seq_len(N)))
+    q <- t(vapply(seq_len(N), function(d) {
+      days <- ((d - smooth_days):(d + smooth_days) - 1) %% N + 1
+      xs <- unlist(byd[days], use.names = FALSE)
+      c(length(xs), if (length(xs)) stats::quantile(xs, probs, names = FALSE, type = 7) else rep(NA_real_, length(probs)))
+    }, numeric(length(probs) + 1)))
+    d <- data.frame(doy = seq_len(N), value = v, n = as.integer(q[, 1]), stringsAsFactors = FALSE)
+    for (k in seq_along(probs)) d[[sprintf("q%02d", round(100 * probs[k]))]] <- q[, k + 1]
+    d
+  })
+  do.call(rbind, out)
+}

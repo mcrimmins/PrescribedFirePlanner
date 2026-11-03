@@ -90,6 +90,20 @@ local({
            grepl("20 Apr (\u00b17 days), 10:00 LST (read at :24)", td$text, fixed = TRUE), td$text)
     .check("D1.2 ... and that day's sunrise and sunset", grepl("Sunrise 05:18, sunset 18:45 LST", td$text, fixed = TRUE))
 
+    .section("D1b. By-variable and daily-range tooltips")
+    lv <- data.frame(doy = 110L, hour = 10L, value = c("relativeHumidity", "pass_relativeHumidity"), kind = c("mean", "share"),
+                     n_valid = 315L, n_missing = 0L, n_years = 21L, n_true = c(NA, 195), stat = c(38.2, 195 / 315))
+    tv <- tip_var_cells(lv, "relativeHumidity", lo = 20, hi = 45)
+    .check("D1b.1 a by-variable cell gives the mean and the share within that limit",
+           grepl("Mean RH: <b>38%</b>", tv$text, fixed = TRUE) && grepl("within your limit (20% to 45%): <b>62%</b> of 315 hours", tv$text, fixed = TRUE),
+           tv$text)
+    .check("D1b.2 a no-rain limit reads 'no rain'", .tip_limit("precipitation", NA, 0) == "no rain")
+    qv <- data.frame(doy = 219L, value = "relativeHumidity", n = 2520L, q10 = 15, q25 = 23, q50 = 32, q75 = 45, q90 = 62)
+    tr <- tip_daily_range(qv, "relativeHumidity", pass = 0.59, hours_label = "hours 09:00-17:00 clock time")
+    .check("D1b.3 a daily-range tooltip: median, middle half, 8 in 10, share within the limit",
+           grepl("Median RH: <b>32%</b>", tr, fixed = TRUE) && grepl("Middle half of hours: 23% to 45%", tr, fixed = TRUE) &&
+             grepl("8 in 10 hours: 15% to 62%", tr, fixed = TRUE) && grepl("Within your limit: <b>59%</b> of 2,520 hours", tr, fixed = TRUE), tr)
+
     .section("D2. Past event hour tooltips")
     eh <- data.frame(date = as.Date("2024-03-12"), hour = c(14L, 15L, 16L, 17L), hour_clock = c(15L, 16L, 17L, 18L),
                      time_clock = as.POSIXct("2024-03-12 15:00", tz = "America/Denver") + 0:3 * 3600,

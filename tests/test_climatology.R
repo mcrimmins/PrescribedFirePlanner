@@ -114,6 +114,18 @@ local({
     .check("F4 runs stop at midnight (two 2 h runs, not one 4 h run)", all(rr$longest == 2))
     .check("F5 ties keep the earlier run", clim_runs(data.frame(date = as.Date("2024-01-01"), hour = 0:4,
                                                                 in_rx = c(TRUE, FALSE, FALSE, TRUE, FALSE)))$start_hour == 0)
+
+    .section("G. Percentiles through the year")
+    qd <- data.frame(year = 2020, doy = rep(1:365, each = 2), hour = 0:1, x = rep(c(10, 20), 365))
+    qd$x[qd$doy == 200] <- c(1000, 1000)          # one odd day: spread over its +/-7-day window only
+    qq <- clim_quantiles(qd, "x", probs = c(0.5, 0.95), smooth_days = 7)
+    .check("G1 one row per day of year, n = 15 days x 2 hours", nrow(qq) == 365 && all(qq$n == 30))
+    .check("G2 a steady series: median 15 (between the two hourly values), every day", all(qq$q50[abs(qq$doy - 200) > 7] == 15))
+    .check("G3 the odd day lifts the 95th percentile only within 7 days of it",
+           qq$q95[qq$doy == 193] > 20 && qq$q95[qq$doy == 192] <= 20 && qq$q95[qq$doy == 207] > 20 && qq$q95[qq$doy == 208] <= 20)
+    .check("G4 the window wraps: day 1 uses days 359-365", { q1 <- clim_quantiles(transform(qd, x = ifelse(doy == 360, 99, x)), "x", 0.95, 7)
+             q1$q95[1] > 20 && q1$q95[9] <= 20 })
+    .check("G5 several variables come back long", nrow(clim_quantiles(transform(qd, y = x), c("x", "y"))) == 730)
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))
