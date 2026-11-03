@@ -26,7 +26,7 @@ local({
     if (!all(have)) stop("missing packages")
     suppressPackageStartupMessages({ library(shiny); library(bslib) })
     .source_core("A")
-    for (f in c("fems_download", "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event")) {
+    for (f in c("fems_download", "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same")) {
       r <- .run(paste("source", f), source(file.path("R", paste0(f, ".R"))))
       .check(paste0("A5 R/", f, ".R loads"), r$ok)
     }
@@ -60,6 +60,8 @@ local({
               "clim-totals_note", "clim-totals_main", "clim-totals_limit", "clim-csv_totals", "clim-csv_years",
               paste0("event-", c("dates", "back", "fwd", "controls", "plot_box", "caption", "totals_main", "totals_limit",
                                  "csv_daily", "csv_hourly")),
+              paste0("same-", c("window", "use_event", "min_run", "controls", "plot_box", "caption", "totals_note",
+                                "totals_main", "totals_limit", "csv_years", "csv_days")),
               "quality-items", "quality-coverage", "quality-log")
     miss <- setdiff(need, ids)
     .check("B3 every input/output id the server uses is in the UI", !length(miss), paste("missing:", paste(miss, collapse = ", ")))
@@ -183,6 +185,29 @@ local({
         session$setInputs(dates = c(r[2] - 20, r[2]))
         msg <- tryCatch({ ev(); "" }, error = function(e) conditionMessage(e))
         .check("E6 more than 14 days is refused in plain words", grepl("up to 14 days", msg, fixed = TRUE), msg)
+      })
+    }
+
+    .section("F. Same dates module (testServer, real station)")
+    if (nrow(mf)) {
+      shiny::testServer(mod_same_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rx0),
+                                                     event_dates = shiny::reactive(as.Date(c("2015-04-01", "2015-04-07")))), {
+        session$setInputs(window = as.Date(c("2001-03-15", "2001-04-15")), min_run = 4)
+        session$elapse(RX_DEBOUNCE_MS + 100)
+        r <- res()
+        .check("F1 15 Mar-15 Apr: 32 days a year, every year of the record",
+               length(r$labels) == 32 && diff(r$years) + 1 == length(unique(r$tw$days$wyear)),
+               sprintf("%d days, %d-%d", length(r$labels), r$years[1], r$years[2]))
+        .check("F2 the heatmap renders", grepl("heatmap", paste(output$plot, collapse = ""), fixed = TRUE))
+        tm <- paste(output$totals_main, collapse = "")
+        .check("F3 the totals table has the summary rows", all(vapply(c("Typical year", "Lowest", "Highest"), grepl, logical(1), x = tm, fixed = TRUE)))
+        rl <- function(f) { con <- file(f, encoding = "UTF-8-BOM"); on.exit(close(con)); readLines(con, warn = FALSE) }
+        .check("F4 both CSVs download", any(grepl("^\"year\"", rl(output$csv_years))) && any(grepl("^\"year\",\"date\"", rl(output$csv_days))))
+        session$setInputs(window = as.Date(c("2001-01-01", "2001-06-30")))
+        msg <- tryCatch({ res(); "" }, error = function(e) conditionMessage(e))
+        .check("F5 more than 92 days is refused in plain words", grepl("up to 92 days", msg, fixed = TRUE), msg)
+        session$setInputs(window = as.Date(c("2001-12-20", "2001-01-10")))
+        .check("F6 a window through New Year works (22 days)", length(res()$labels) == 22)
       })
     }
   }, error = function(e) {

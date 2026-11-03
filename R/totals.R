@@ -239,3 +239,123 @@ totals_csv_name <- function(meta, what = "summary", tab = "climatology") {
   part <- switch(what, summary = "totals", per_year = "per-year", daily = "daily", hourly = "hourly", what)
   paste0("rxwx_", gsub("[^A-Za-z0-9]+", "-", tolower(meta$name)), "_", tab, "_", part, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
 }
+
+# ---- Same dates: one window, every year ------------------------------------------------
+# flagged: rx_flag() output of hourly_window() rows (has wyear, wday, date).
+# ndays: named integer, days in the window per wyear (hourly_window_ndays).
+# min_run: hours of consecutive in-prescription time that make a "usable day".
+# Returns list(days, per_year, summary):
+#   days      one row per day: wyear, date, wday, n_true, n_valid, n_missing,
+#             longest, start_hour, usable, held (the limit that alone held out the
+#             most hours that day) and held_h
+#   per_year  totals_summary() input: one row per wyear x measure (period "Window"),
+#             measures in_rx, pass_/only_<var>, plus usable_days and longest_run
+#   summary   totals_summary(per_year)
+totals_window <- function(flagged, rx_vars, ndays, min_run = SAME_MIN_RUN_H, hour_col = "hour") {
+  vals <- totals_measures(rx_vars); vals <- vals[vals %in% names(flagged)]
+  dl <- clim_summarise(flagged, vals, by = c("wyear", "date"))
+  runs <- clim_runs(flagged, "in_rx", by = c("wyear", "date"), hour_col = hour_col)
+  days <- dl[dl$value == "in_rx", c("wyear", "date", "n_true", "n_valid", "n_missing")]
+  days$wday <- format(days$date, "%d %b")
+  k <- match(paste(days$wyear, days$date), paste(runs$wyear, runs$date))
+  days$longest <- runs$longest[k]; days$start_hour <- runs$start_hour[k]
+  days$usable <- days$longest >= min_run
+  days$held <- NA_character_; days$held_h <- NA_real_
+  only <- dl[startsWith(dl$value, "only_"), ]
+  if (nrow(only)) {
+    only <- only[order(paste(only$wyear, only$date), -only$n_true), ]
+    top <- only[!duplicated(paste(only$wyear, only$date)) & only$n_true > 0, ]
+    j <- match(paste(days$wyear, days$date), paste(top$wyear, top$date))
+    days$held <- sub("^only_", "", top$value[j]); days$held_h <- top$n_true[j]
+  }
+  # per year: sums over the window's days
+  key <- paste(dl$wyear, dl$value)
+  py <- data.frame(year = as.integer(tapply(dl$wyear, key, `[`, 1)), period = "Window",
+                   value = tapply(dl$value, key, `[`, 1),
+                   n_true = as.numeric(tapply(dl$n_true, key, sum)), n_valid = as.numeric(tapply(dl$n_valid, key, sum)),
+                   n_missing = as.numeric(tapply(dl$n_missing, key, sum)), stringsAsFactors = FALSE)
+  ud <- tapply(days$usable, days$wyear, sum); lr <- tapply(days$longest, days$wyear, max)
+  yrs <- as.integer(names(ud))
+  extra <- rbind(data.frame(year = yrs, period = "Window", value = "usable_days", n_true = as.numeric(ud),
+                            n_valid = NA_real_, n_missing = NA_real_, stringsAsFactors = FALSE),
+                 data.frame(year = yrs, period = "Window", value = "longest_run", n_true = as.numeric(lr),
+                            n_valid = NA_real_, n_missing = NA_real_, stringsAsFactors = FALSE))
+  py <- rbind(py, extra)
+  # coverage: usable in_rx hours over the hours the window has that year (missing rows count as missing)
+  ir <- py[py$value == "in_rx", ]
+  expected <- 24 * ndays[as.character(ir$year)]
+  cov <- stats::setNames(100 * ir$n_valid / expected, ir$year)
+  py$hours <- ifelse(py$value == "in_rx", 24 * ndays[as.character(py$year)], NA_real_)
+  py$pct_usable <- unname(cov[as.character(py$year)])
+  py$used <- !is.na(py$pct_usable) & py$pct_usable >= TOTALS_COVERAGE_MIN
+  py$period <- factor(py$period, levels = "Window")
+  ord <- c(vals, "usable_days", "longest_run")
+  py <- py[order(match(py$value, ord), py$year), ]
+  rownames(py) <- NULL
+  list(days = days, per_year = py, summary = totals_summary(py))
+}
+
+totals_window_display <- function(w, rx_vars, min_run = SAME_MIN_RUN_H) {
+  py <- w$per_year; sm <- w$summary
+  get <- function(v) { d <- py[py$value == v, ]; d[order(d$year), ] }
+  ir <- get("in_rx"); ud <- get("usable_days"); lr <- get("longest_run")
+  yr <- paste0(ir$year, ifelse(ir$used, "", "*"))
+  main <- data.frame(yr, .totals_h(ir$n_true), .totals_h(ud$n_true[match(ir$year, ud$year)]),
+                     paste0(.totals_h(lr$n_true[match(ir$year, lr$year)]), " h"),
+                     paste0(round(ir$pct_usable), "%"), .totals_h(ir$n_missing), stringsAsFactors = FALSE)
+  nm <- c("Year", "In prescription (h)", sprintf("Usable days (%d+ h run)", min_run), "Longest run",
+          "Data coverage", "Hours excluded")
+  names(main) <- nm
+  # summary rows: typical year, lowest, highest (years named), for hours, usable days and longest run
+  srow <- function(lab, f) {
+    g <- function(v, unit = "") { r <- sm[sm$value == v, ]; if (!nrow(r)) "" else f(r, unit) }
+    stats::setNames(data.frame(lab, g("in_rx"), g("usable_days"), g("longest_run", " h"), "", "",
+                               stringsAsFactors = FALSE), nm)
+  }
+  main <- rbind(main,
+                srow("Typical year", function(r, u) paste0(.totals_h(r$median), u)),
+                srow("Lowest", function(r, u) sprintf("%s%s (%d)", .totals_h(r$low), u, r$low_year)),
+                srow("Highest", function(r, u) sprintf("%s%s (%d)", .totals_h(r$high), u, r$high_year)))
+  rows <- list()
+  for (v in rx_vars) {
+    lab <- RX_VARS$label[RX_VARS$var == v]
+    for (m in c("pass", "only")) {
+      r <- sm[sm$value == paste0(m, "_", v), ]
+      if (!nrow(r)) next
+      rows[[length(rows) + 1]] <- c(Limit = if (m == "pass") lab else "", Hours = if (m == "pass") "met" else "only one failing",
+                                    `Typical year` = .totals_h(r$median),
+                                    Lowest = if (is.na(r$low)) "" else sprintf("%s (%d)", .totals_h(r$low), r$low_year),
+                                    Highest = if (is.na(r$high)) "" else sprintf("%s (%d)", .totals_h(r$high), r$high_year),
+                                    `All years` = .totals_h(r$total))
+    }
+  }
+  by_limit <- if (length(rows)) as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE, check.names = FALSE)
+              else data.frame(Limit = character(0), Hours = character(0))
+  list(main = main, by_limit = by_limit, any_left_out = any(!ir$used))
+}
+
+# what = "per_year": totals_window()$per_year; what = "daily": $days.
+totals_window_csv_lines <- function(w, meta, source_detail, rx, window_label, min_run, hour_label,
+                                    what = c("per_year", "daily")) {
+  what <- match.arg(what)
+  hdr <- .totals_csv_header(paste0("same dates, many years, ", if (what == "per_year") "hour totals by year" else "every day"),
+                            meta, source_detail, rx, paste0("Window: ", window_label, ", every year in the record"), hour_label,
+                            c(sprintf("A usable day has at least %d consecutive hours in prescription (the run stops at midnight).", min_run),
+                              paste0("Typical year, lowest and highest leave out a year with under ", TOTALS_COVERAGE_MIN,
+                                     "% of the window's hours usable (in_median = FALSE).")))
+  if (what == "per_year") {
+    x <- w$per_year
+    d <- data.frame(year = x$year, measure = x$value,
+                    description = ifelse(x$value == "usable_days", sprintf("Days with a run of %d+ h in prescription", min_run),
+                                         ifelse(x$value == "longest_run", "Longest run in prescription (h)", totals_measure_label(x$value))),
+                    value = x$n_true, hours_usable = x$n_valid, hours_excluded = x$n_missing,
+                    pct_usable = round(x$pct_usable, 1), in_median = x$used, stringsAsFactors = FALSE)
+  } else {
+    x <- w$days
+    d <- data.frame(year = x$wyear, date = format(x$date, "%Y-%m-%d"), hours_in_rx = x$n_true, hours_usable = x$n_valid,
+                    hours_excluded = x$n_missing, longest_run_h = x$longest, run_start_hour = x$start_hour,
+                    usable_day = x$usable, held_out_most_by = RX_VARS$label[match(x$held, RX_VARS$var)],
+                    held_out_hours = x$held_h, stringsAsFactors = FALSE)
+  }
+  c(hdr, .totals_csv_body(d))
+}

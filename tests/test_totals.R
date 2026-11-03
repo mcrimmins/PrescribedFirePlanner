@@ -146,6 +146,40 @@ local({
     .check("F7 hourly CSV: 72 hours, with in_rx, pass_ and only_ columns and the values",
            nrow(bh) == 72 && all(c("date", "hour_lst", "in_rx", "pass_temperature", "only_relativeHumidity", "temperature") %in% names(bh)))
     .check("F8 file names carry the tab", grepl("_past-event_daily_", totals_csv_name(meta, "daily", tab = "past-event"), fixed = TRUE))
+
+    .section("G. Same dates: totals by year")
+    hw <- hourly_window(h, as.Date("2001-03-01"), as.Date("2001-03-10"))
+    fw <- rx_flag(hw, rx)
+    nd <- stats::setNames(hourly_window_ndays(2005:2006, as.Date("2001-03-01"), as.Date("2001-03-10")), 2005:2006)
+    tw <- totals_window(fw, vars, nd, min_run = 4)
+    .check("G1 one row per day (2 years x 10 days)", nrow(tw$days) == 20)
+    ir <- tw$per_year[tw$per_year$value == "in_rx", ]
+    .check("G2 per-year hours match the flagged table", all(ir$n_true == tapply(fw$in_rx, fw$wyear, sum, na.rm = TRUE)))
+    ud <- tw$per_year[tw$per_year$value == "usable_days", ]
+    .check("G3 usable days = days whose longest run is at least min_run",
+           all(ud$n_true == tapply(clim_runs(fw, by = c("wyear", "date"))$longest >= 4,
+                                   clim_runs(fw, by = c("wyear", "date"))$wyear, sum)))
+    tw12 <- totals_window(fw, vars, nd, min_run = 13)
+    .check("G4 a higher min_run never gives more usable days",
+           all(tw12$per_year$n_true[tw12$per_year$value == "usable_days"] <= ud$n_true))
+    .check("G5 the summary has typical year, lowest and highest for hours, usable days and longest run",
+           all(c("in_rx", "usable_days", "longest_run") %in% tw$summary$value))
+    fw2 <- fw; fw2$in_rx[fw2$wyear == 2006 & fw2$date <= as.Date("2006-03-03")] <- NA
+    tw2 <- totals_window(fw2, vars, nd, min_run = 4)
+    .check("G6 a year with under 80% of the window usable is left out of the typical year (2006: 7 of 10 days)",
+           !tw2$per_year$used[tw2$per_year$value == "in_rx" & tw2$per_year$year == 2006] &&
+             tw2$summary$years_used[tw2$summary$value == "in_rx"] == 1)
+    dw <- totals_window_display(tw2, vars, 4)
+    .check("G7 display: a row per year, then Typical year / Lowest / Highest; the left-out year has a *",
+           identical(dw$main$Year, c("2005", "2006*", "Typical year", "Lowest", "Highest")) && dw$any_left_out,
+           paste(dw$main$Year, collapse = " | "))
+    lw <- totals_window_csv_lines(tw, meta, "test data", rx, "01 Mar to 10 Mar", 4, "LST", "per_year")
+    ld <- totals_window_csv_lines(tw, meta, "test data", rx, "01 Mar to 10 Mar", 4, "LST", "daily")
+    bw <- utils::read.csv(textConnection(lw), comment.char = "#"); bd <- utils::read.csv(textConnection(ld), comment.char = "#")
+    .check("G8 both CSVs read back; the header names the window and the usable-day rule",
+           nrow(bd) == 20 && all(c("usable_day", "longest_run_h", "held_out_most_by") %in% names(bd)) &&
+             "usable_days" %in% bw$measure && any(grepl("Window: 01 Mar to 10 Mar", lw, fixed = TRUE)) &&
+             any(grepl("at least 4 consecutive hours", lw, fixed = TRUE)))
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))

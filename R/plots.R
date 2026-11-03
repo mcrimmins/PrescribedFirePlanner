@@ -179,3 +179,39 @@ plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, cloc
                  modeBarButtonsToRemove = c("select2d", "lasso2d", "autoScale2d", "zoomIn2d", "zoomOut2d"),
                  toImageButtonOptions = list(format = "png", filename = "rx_past_event", scale = 2))
 }
+
+# ---- Same dates: year x day heatmap ---------------------------------------------------
+# days: totals_window()$days with `text` (tip_window_days). labels: every day
+# of the window in order (attr "window_days"). Colour = hours in prescription
+# that day (0-24, same ramp as the climatology); usable days outlined.
+plot_year_day <- function(days, labels, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
+  yrs <- sort(unique(days$wyear))
+  z <- matrix(NA_real_, length(yrs), length(labels)); tx <- matrix("", length(yrs), length(labels))
+  i <- match(days$wyear, yrs); j <- match(days$wday, labels)
+  ok <- !is.na(j)
+  z[cbind(i, j)[ok, , drop = FALSE]] <- ifelse(days$n_valid[ok] > 0, days$n_true[ok], NA)
+  tx[cbind(i, j)[ok, , drop = FALSE]] <- days$text[ok]
+  u <- which(ok & days$usable)
+  shapes <- lapply(u, function(k)
+    list(type = "rect", xref = "x", yref = "y", x0 = j[k] - 1.5, x1 = j[k] - 0.5, y0 = i[k] - 1.5, y1 = i[k] - 0.5,
+         line = list(color = highlight, width = 1.1), fillcolor = "rgba(0,0,0,0)", layer = "above"))
+  step <- if (length(labels) > 45) 7 else if (length(labels) > 20) 3 else 1
+  tv <- labels[seq(1, length(labels), by = step)]
+  plotly::plot_ly(x = labels, y = as.character(yrs), z = z, text = tx, type = "heatmap",
+                  colorscale = .plot_colorscale(colors), zmin = 0, zmax = 24,
+                  xgap = 1, ygap = 1, hovertemplate = "%{text}<extra></extra>",
+                  colorbar = list(title = list(text = "Hours in<br>prescription", font = list(size = 12)),
+                                  tickvals = c(0, 6, 12, 18, 24), len = 0.9, outlinewidth = 0, thickness = 14)) |>
+    plotly::layout(xaxis = .plot_axis(title = "", type = "category", tickvals = tv, side = "top",
+                                      categoryorder = "array", categoryarray = labels),
+                   yaxis = .plot_axis(title = "", type = "category", autorange = "reversed",
+                                      categoryorder = "array", categoryarray = as.character(yrs)),
+                   shapes = shapes, margin = list(l = 50, r = 20, t = 40, b = 10),
+                   plot_bgcolor = "rgba(0,0,0,0)", paper_bgcolor = "rgba(0,0,0,0)",
+                   hoverlabel = list(bgcolor = "white", bordercolor = "#cccccc", font = list(size = 13, color = "#222222"),
+                                     align = "left")) |>
+    plotly::config(displaylogo = FALSE,
+                   modeBarButtonsToRemove = c("zoom2d", "pan2d", "select2d", "lasso2d", "autoScale2d",
+                                              "zoomIn2d", "zoomOut2d", "resetScale2d"),
+                   toImageButtonOptions = list(format = "png", filename = "rx_same_dates", scale = 2))
+}

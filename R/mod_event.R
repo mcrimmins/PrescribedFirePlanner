@@ -5,7 +5,8 @@
 # whole record: a strip of in / out / not-known hours, one panel per variable
 # with the prescription range shaded and the failing limit marked, night
 # shaded. Below: hour totals by day (R/totals.R) and two CSVs (daily, hourly).
-# Takes reactives st() (station object) and rx() (prescription).
+# Takes reactives st() (station object) and rx() (prescription). Returns
+# list(dates) -- the chosen range, a reactive.
 # Requires R/constants.R, R/sun.R, R/rx.R, R/climatology.R, R/totals.R,
 # R/tooltips.R, R/plots.R.
 # ==============================================================================
@@ -145,5 +146,8 @@ mod_event_server <- function(id, st, rx) {
       })
     output$csv_daily <- csv_out("daily")
     output$csv_hourly <- csv_out("hourly")
+
+    # the chosen range, for the Same dates tab's "Use the Past event dates"
+    list(dates = shiny::reactive(input$dates))
   })
 }

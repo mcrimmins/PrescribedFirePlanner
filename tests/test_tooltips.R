@@ -99,6 +99,19 @@ local({
     tcl <- tip_event_hours(rx_flag(eh, rxe), rxe, clock = TRUE)
     .check("D2.7 clock-time labels", grepl("15:00 clock time", tcl[1], fixed = TRUE), tcl[1])
 
+    .section("D3. Same dates day tooltips")
+    dd <- data.frame(date = as.Date(c("2011-03-27", "2011-03-28")), n_true = c(14, 0), n_valid = c(24, 20), n_missing = c(0, 4),
+                     longest = c(5L, 0L), start_hour = c(3L, NA), usable = c(TRUE, FALSE), held = c("relativeHumidity", NA),
+                     held_h = c(7, NA))
+    tw <- tip_window_days(dd, 4)
+    .check("D3.1 date, hours in prescription and the run", grepl("Sun 27 Mar 2011", tw[1], fixed = TRUE) &&
+             grepl("<b>14</b> of 24 hours with data", tw[1], fixed = TRUE) && grepl("Longest run 5 h, 03:00-08:00 LST", tw[1], fixed = TRUE), tw[1])
+    .check("D3.2 usable days say so; the limit holding the day out is named",
+           grepl("a usable day</b> (4+ h)", tw[1], fixed = TRUE) && grepl("Held out most by RH alone: 7 hours", tw[1], fixed = TRUE))
+    .check("D3.3 a day with none in prescription, and missing hours, reads plainly",
+           grepl("No hours in prescription", tw[2], fixed = TRUE) && grepl("4 hours not known", tw[2], fixed = TRUE) &&
+             !grepl("usable", tw[2], fixed = TRUE), tw[2])
+
     .section("E. Map markers")
     ts <- tip_station("21202", "SAGUARO", 2264, "AZ", featured = TRUE, bundled = TRUE, note = "Sonoran Desert")
     .check("E1 station tooltip: name, id, state, elevation, bundled, note",

@@ -106,7 +106,14 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   and night (sunset to sunrise) shaded. The hover names each failing limit with its value and the limit. Under the chart:
   hours in prescription by day with the longest consecutive run, the same per limit, and Daily and Hourly CSVs.
   Clock-time toggle at DST stations. The longest run stops at midnight (a day's window, not an overnight one).
-- **Same dates, many years:** the selected window overlaid or stacked for every year in the record, with in-prescription hours counted per year.
+- **Same dates, many years** (built 2026-11-02): one window of the year, up to 92 days (default 15 Mar to 15 Apr; it may
+  wrap through New Year, and a button copies the Past event dates), for every year in the record. A year x day heatmap:
+  colour = hours in prescription that day (0-24, the climatology ramp), outline = a **usable day**, one with a run of at
+  least N consecutive hours in prescription (slider, default 4 h; the run stops at midnight). The hover gives the day's
+  hours, its longest run and the limit that alone held out the most hours. Below: per year, hours in prescription,
+  usable days, longest run and data coverage, then typical year, lowest and highest (years named; a year under 80%
+  coverage is starred and left out); the same per limit; Per year and Daily CSVs. 29 Feb is its own column, blank in
+  non-leap years; a 29 Feb window end is read as 28 Feb.
 - **Synthetic forecast:**
   - Pick a past issue time and get a 1–7 day forecast of temperature, RH, wind speed and wind direction as a
     **central value with an uncertainty band that widens with lead time**. Precipitation and solar limits are

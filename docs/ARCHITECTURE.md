@@ -105,6 +105,10 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
   call instead of multiplying `stat` back out. Per-year counts use `by = c("year", "month")` or `c("year", "date")`, no
   smoothing; the median year, range and total are taken from those rows in `R/totals.R` (`totals_*`, presentation of
   counts only: no flagging, no second aggregation), which also writes the CSV header lines.
+- `hourly_window(h, start, end)` (in `R/hourly.R`): rows whose month-day is in the window, with `wyear` (the year the window
+  starts in, for windows through New Year) and `wday`; attr `window_days` lists every day label. `hourly_window_ndays()`
+  gives each year's day count for the coverage rule. `totals_window()` turns the flagged rows into per-day, per-year and
+  summary counts (Same dates tab).
 - `clim_runs(flagged, value = "in_rx", by = "date", hour_col = "hour")`: the longest run of consecutive TRUE hours per
   group and its start hour. A FALSE or NA hour ends a run; runs stop at group boundaries (midnight for `by = "date"`).
   Used by the Past event daily table, and by the window-length climatology later.
@@ -147,7 +151,8 @@ Written once, used by the Data quality tab **and** by the network tests (which c
   It's tested without a browser: `test_tooltips.R` checks the strings, using `grepl(fixed = TRUE)`, never regex on rendered HTML.
 - **Shiny modules:** `R/mod_station.R` returns a reactive `station_id`, `R/mod_rx.R` returns a reactive `rx`,
   `R/mod_quality.R` takes `hourly()` and the station metadata and returns the badge count, and
-  `R/mod_climatology.R` and `R/mod_event.R` (Past event) take `st()` and `rx()`. `app.R` attaches shiny, bslib and dplyr, sources `R/` in a fixed order
+  `R/mod_climatology.R`, `R/mod_event.R` (Past event, returns its date range) and `R/mod_same.R` (Same dates, also
+  takes the Past event range) take `st()` and `rx()`. `app.R` attaches shiny, bslib and dplyr, sources `R/` in a fixed order
   (constants → fems_api → fems_download → sun → hourly → quality → rx → climatology → tooltips → totals → plots → mod_*), and wires the modules together.
 - The quality report is computed once per station load and cached with the hourly table.
 - **Cache:** `reactiveValues` keyed by `station_id`, for the session only (carryover §1).
@@ -188,7 +193,7 @@ Shared dot-prefixed helpers go in `tests/helpers.R`.
 - `test_tooltips.R`: no network. Tooltip text for known summaries: counts, %, units, the failed-limit wording.
 - `test_totals.R`: no network. Hand-built counts for the median year, named range, total and the 80% coverage rule;
   display tables; the CSV header and round trip; on a bundled station, the totals match the heatmap's own counts;
-  Past event totals by day, longest runs, daily and hourly CSVs.
+  Past event totals by day, longest runs, daily and hourly CSVs; Same dates totals by year, usable days, the coverage rule.
 - `test_quality.R`: no network. Planted cases: a 0.5 h temperature step from 2021 is found with the right year; a 120 h stuck
   run appears in the screening log; coverage counts; a drought year is "info", not "affects".
 - `test_fems_retry.R`: no network. A stubbed `.post` returns 502, 502, then 200: one result after two waits. Always 502:

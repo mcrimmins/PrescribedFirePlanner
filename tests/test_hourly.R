@@ -172,6 +172,21 @@ local({
              is.null(res) && !is.null(w) && grepl("checksum", w, fixed = TRUE), if (is.null(w)) "" else w)
       .check("F10 a station that isn't bundled returns NULL quietly", is.null(hourly_read_bundled("99999")))
     }
+
+    .section("G. One window of the year (Same dates)")
+    gw <- hourly_add_calendar(hourly_from_fems(.fake_wx(seq(as.Date("2007-12-01"), as.Date("2009-03-31"), by = "day"))), "America/Phoenix")
+    w1 <- hourly_window(gw, as.Date("2001-02-20"), as.Date("2001-03-05"))
+    .check("G1 a window across 29 Feb: labels include 29 Feb, the leap year has the day and the others don't",
+           "29 Feb" %in% attr(w1, "window_days") && length(attr(w1, "window_days")) == 15 &&
+             sum(w1$wday == "29 Feb") == 24 && all(w1$wyear[w1$wday == "29 Feb"] == 2008))
+    .check("G2 days per window-year: 15 in 2008 (leap), 14 in 2009",
+           identical(hourly_window_ndays(c(2008L, 2009L), as.Date("2001-02-20"), as.Date("2001-03-05")), c(15L, 14L)))
+    w2 <- hourly_window(gw, as.Date("2001-12-20"), as.Date("2001-01-10"))
+    .check("G3 a window through New Year: 10 Jan 2009 belongs to the 2008 window, 20 Dec 2008 too",
+           all(w2$wyear[w2$date == as.Date("2009-01-10")] == 2008) && all(w2$wyear[w2$date == as.Date("2008-12-20")] == 2008))
+    .check("G4 ... 22 day labels, 20 Dec first and 10 Jan last", length(attr(w2, "window_days")) == 22 &&
+             attr(w2, "window_days")[1] == "20 Dec" && tail(attr(w2, "window_days"), 1) == "10 Jan")
+    .check("G5 nothing outside the window is kept", !any(w1$date == as.Date("2008-03-06")) && !any(w2$date == as.Date("2008-12-19")))
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))

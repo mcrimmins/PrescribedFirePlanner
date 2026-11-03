@@ -16,7 +16,7 @@ library(bslib)
 
 # Fixed order; every file namespaces its other packages (CLAUDE.md).
 for (f in c("constants", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
-            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event")) {
+            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same")) {
   source(file.path("R", paste0(f, ".R")))
 }
 
@@ -77,8 +77,7 @@ ui <- page_navbar(
   nav_panel("Station", value = "station", mod_station_map_ui("station")),
   nav_panel("Climatology", value = "climatology", mod_climatology_ui("clim")),
   nav_panel("Past event", value = "past", mod_event_ui("event")),
-  nav_panel("Same dates", value = "same",
-            coming("Same dates, many years", "One window of the year (say 15 Mar to 15 Apr) shown for every year in the record, with hours in prescription counted per year.")),
+  nav_panel("Same dates", value = "same", mod_same_ui("same")),
   nav_panel("Forecast", value = "forecast",
             coming("Synthetic forecast", "Practice reading a forecast: pick a past issue time, see a forecast with widening uncertainty, then reveal what happened. Always marked SYNTHETIC - FOR TRAINING ONLY.")),
   nav_panel("Data quality", value = "quality", mod_quality_ui("quality")),
@@ -107,7 +106,8 @@ server <- function(input, output, session) {
   rx <- mod_rx_server("rx")
   mod_quality_server("quality", station$st)
   mod_climatology_server("clim", station$st, rx)
-  mod_event_server("event", station$st, rx)
+  event <- mod_event_server("event", station$st, rx)
+  mod_same_server("same", station$st, rx, event$dates)
 
   # after a station loads, go to Climatology; the badge opens Data quality
   observeEvent(station$st(), {

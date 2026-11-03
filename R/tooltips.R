@@ -161,3 +161,18 @@ tip_event_hours <- function(flagged, rx, clock = FALSE, obs_minute = NA_integer_
                       paste0(" \u00b7 Rain ", vapply(flagged$precipitation, function(x) tip_value("precipitation", x), ""))))
   paste0(when, "<br>", status, "<br>", wx)
 }
+
+# ---- Same dates: one tooltip per day ---------------------------------------------------
+# days: totals_window()$days. Returns one string per row.
+tip_window_days <- function(days, min_run, clock = FALSE) {
+  run <- ifelse(days$longest == 0, "No hours in prescription",
+                sprintf("Longest run %d h, %02d:00-%02d:00%s", days$longest, days$start_hour,
+                        (days$start_hour + days$longest) %% 24, if (clock) " clock time" else " LST"))
+  use <- ifelse(days$usable, sprintf(" \u2014 <b>a usable day</b> (%d+ h)", min_run), "")
+  held <- ifelse(is.na(days$held), "",
+                 paste0("<br>Held out most by ", .tip_short[days$held], " alone: ", tip_hours(days$held_h)))
+  miss <- ifelse(days$n_missing > 0, paste0("<br>", tip_hours(days$n_missing), " not known (missing data)"), "")
+  paste0("<b>", format(days$date, "%a %d %b %Y"), "</b>",
+         "<br>In prescription: <b>", days$n_true, "</b> of ", tip_hours(days$n_valid), " with data",
+         "<br>", run, use, held, miss)
+}

@@ -115,3 +115,8 @@ CHART_OUT    <- "#c3ccd3"                  # out of prescription
 CHART_FAIL   <- CHART_HIGHLIGHT            # this limit failed at this hour
 CHART_NIGHT  <- "rgba(25, 45, 70, 0.07)"   # sunset to sunrise shading
 CHART_BAND   <- "rgba(11, 94, 128, 0.08)"  # the prescription range on a variable panel
+
+# ---- Same dates --------------------------------------------------------------------
+SAME_MAX_DAYS   <- 92                    # longest window of the year
+SAME_DEFAULT    <- c("03-15", "04-15")   # month-day, until a Past event range is carried over
+SAME_MIN_RUN_H  <- 4                     # a "usable day" has at least this many consecutive hours in prescription

@@ -319,3 +319,39 @@ hourly_load_station <- function(station_id, prefer_bundled = TRUE,
 
 # Rows of the hourly table inside the climatology baseline.
 hourly_baseline <- function(h, years = RX_BASELINE_YEARS) h[h$year %in% years, , drop = FALSE]
+
+# ---- one window of the year, every year (Same dates tab) ---------------------------
+# Rows of `h` whose month-day falls in the window start..end (the years of the
+# two dates are ignored). A window may wrap through New Year (20 Dec to 10 Jan);
+# its days then belong to the year it starts in. Adds wyear (the window's year)
+# and wday ("15 Mar"). attr "window_days" gives every day label in order,
+# 29 Feb included when the window spans it (non-leap years have no row for it).
+.hourly_md <- function(d) { lt <- as.POSIXlt(d); (lt$mon + 1L) * 100L + lt$mday }
+
+hourly_window <- function(h, start, end) {
+  smd <- .hourly_md(start); emd <- .hourly_md(end)
+  wrap <- smd > emd
+  md <- .hourly_md(h$date)
+  keep <- if (wrap) md >= smd | md <= emd else md >= smd & md <= emd
+  out <- h[keep, , drop = FALSE]
+  md <- md[keep]
+  out$wyear <- as.integer(out$year - (wrap & md <= emd))
+  out$wday <- format(out$date, "%d %b")
+  # day labels from leap-capable reference years (2003-2004 when wrapping, so Feb 29 can appear after New Year)
+  ref <- function(y, x) as.Date(sprintf("%d-%02d-%02d", y, x %/% 100, x %% 100))
+  days <- if (wrap) seq(ref(2003, smd), ref(2004, emd), by = "day") else seq(ref(2004, smd), ref(2004, emd), by = "day")
+  attr(out, "window_days") <- format(days, "%d %b")
+  attr(out, "window_wrap") <- wrap
+  out
+}
+
+# Number of days the window has in a given window-year (leap years can have one more).
+hourly_window_ndays <- function(wyear, start, end) {
+  smd <- .hourly_md(start); emd <- .hourly_md(end); wrap <- smd > emd
+  one <- function(y) {
+    a <- as.Date(sprintf("%d-%02d-%02d", y, smd %/% 100, smd %% 100))
+    b <- as.Date(sprintf("%d-%02d-%02d", y + wrap, emd %/% 100, emd %% 100))
+    as.integer(b - a) + 1L
+  }
+  vapply(wyear, one, integer(1))
+}
