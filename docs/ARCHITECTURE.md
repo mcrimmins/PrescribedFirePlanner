@@ -147,7 +147,9 @@ Written once, used by the Data quality tab **and** by the network tests (which c
 - For testing without a network, `fems_gql()` takes an internal `.post = httr::POST` argument that a test can replace with a stub.
 
 ### Plots and the app
-- `R/plots.R`: `plot_hour_heatmap(summary, x = "month", fill = "stat", ...)` and friends. These take a `clim_summarise()` result and only draw it.
+- `R/plots.R`: `plot_hour_heatmap(summary, x = "month", fill = "stat", ...)` and friends, including
+  `plot_doy_heatmap()` (hour x day of year on a numeric hour axis, so sun lines from `sun_times()` sit at their real times),
+  `plot_event()` and `plot_year_day()`. These take a `clim_summarise()` result and only draw it.
 - **Tooltips:** `R/tooltips.R` builds the hover text from summary columns, with one function per mark type
   (`tip_cell()`, `tip_hour()`, `tip_range()`, `tip_station()`) and shared formatters for %, units, hours and "LST".
   Plots pass it to plotly as `text` with `hoverinfo = "text"`, so every chart uses the same wording.

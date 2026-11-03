@@ -12,6 +12,8 @@
 RX_BASELINE_YEARS <- 2005:2025     # the climatology baseline (trimmed to each station's record)
 CLIM_SMOOTH_DAYS  <- 7             # +/- days for day-of-year smoothing (a 15-day window)
 CLIM_DOY_N        <- 365           # 365-day calendar: Feb 29 is merged into Feb 28
+CLIM_DOY_STEP     <- 3             # the day-of-year chart draws every 3rd day: the +/-7-day smoothing makes
+                                   # daily columns redundant, and it keeps the widget ~1/3 the size
 
 # ---- prescription variables --------------------------------------------------
 # One row per variable a prescription can constrain. `kind` is "linear" (min

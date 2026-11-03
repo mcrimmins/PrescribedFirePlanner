@@ -82,6 +82,11 @@ using the same wording, units and time label ("LST", or the clock-time zone when
     Overlays: sunrise, sunset and civil twilight lines for the station's location, the preset's ignition period,
     and an orange outline around cells at or above a settable threshold (default 50% of hours), marking the climatological
     window by outline as well as colour. Colour ramp: one hue, white to navy (ColorBrewer Blues), fixed 0–100%.
+    *Built 2026-11-02* as the first view of the Climatology tab ("Day of year", then "Month × hour" and "Table"): every
+    3rd day is drawn (the ±7-day smoothing makes daily columns redundant; it keeps the widget under 2 MB). By day of year
+    the threshold is a contour line rather than cell outlines; the ignition period is a dashed band (an hour earlier in
+    LST through daylight saving). Hover: date, hour, share and hours behind it, that day's sunrise and sunset, the
+    limit that fails most often, typical values.
   - **Per-variable panels on the same axes:** the hourly climatology of each constrained variable (e.g. median RH)
     with the prescription limits drawn as contour lines, so trainees can see which limit closes the window, at which hours and in which season.
     Wind direction is shown as the % of hours in the allowed sector.

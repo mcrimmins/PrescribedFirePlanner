@@ -81,6 +81,15 @@ local({
       .say("    example: ", tc$text[tc$month == 4 & tc$hour == 14])
     }
 
+    .section("D1. Day-of-year cells")
+    ldoy <- data.frame(doy = c(110L, 110L), hour = 10L, value = c("in_rx", "pass_temperature"), kind = "share",
+                       n_valid = 315L, n_missing = 0L, n_years = 21L, n_true = c(130, 300), stat = c(130, 300) / 315)
+    td <- tip_cells(ldoy, x_col = "doy", hour_col = "hour", rx_vars = "temperature", obs_minute = 24,
+                    sun = data.frame(doy = 110L, sunrise = 5.3, sunset = 18.75))
+    .check("D1.1 a day-of-year cell names the date and the smoothing window",
+           grepl("20 Apr (\u00b17 days), 10:00 LST (read at :24)", td$text, fixed = TRUE), td$text)
+    .check("D1.2 ... and that day's sunrise and sunset", grepl("Sunrise 05:18, sunset 18:45 LST", td$text, fixed = TRUE))
+
     .section("D2. Past event hour tooltips")
     eh <- data.frame(date = as.Date("2024-03-12"), hour = c(14L, 15L, 16L, 17L), hour_clock = c(15L, 16L, 17L, 18L),
                      time_clock = as.POSIXct("2024-03-12 15:00", tz = "America/Denver") + 0:3 * 3600,

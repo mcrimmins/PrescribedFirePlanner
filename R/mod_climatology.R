@@ -25,8 +25,9 @@ mod_climatology_ui <- function(id) {
                                       step = 5, post = "%", ticks = FALSE, width = "100%")),
         shiny::div(class = "small text-muted", "of hours in prescription"),
         shiny::uiOutput(ns("controls"))),
-      bslib::navset_underline(
-        bslib::nav_panel("Heatmap", plotly::plotlyOutput(ns("heat"), height = "560px")),
+      bslib::navset_underline(id = ns("view"),
+        bslib::nav_panel("Day of year", value = "doy", plotly::plotlyOutput(ns("doy"), height = "600px")),
+        bslib::nav_panel("Month \u00d7 hour", value = "month", plotly::plotlyOutput(ns("heat"), height = "560px")),
         bslib::nav_panel("Table", shiny::div(class = "small text-muted my-2",
                                              "% of hours in prescription, by month (columns) and hour (rows). Bold: at or above the outline threshold."),
                          shiny::tableOutput(ns("tbl")))),
@@ -113,13 +114,48 @@ mod_climatology_server <- function(id, st, rx) {
     output$title <- shiny::renderUI({
       if (is.null(st())) return("Climatology")
       shiny::span("When is ", shiny::strong(st()$meta$name), " in prescription? ",
-                  shiny::span(class = "text-muted fw-normal", "% of hours, by month and hour of day"))
+                  shiny::span(class = "text-muted fw-normal", "% of hours, by time of year and hour of day"))
     })
     output$controls <- shiny::renderUI({
       shiny::req(st())
       if (!isTRUE(st()$meta$has_dst)) return(NULL)
-      shiny::checkboxInput(ns("clock"), "Show clock time (daylight saving) instead of local standard time (LST)",
+      shiny::checkboxInput(ns("clock"), "Clock time (daylight saving) instead of LST",
                            value = isTRUE(shiny::isolate(input$clock)))
+    })
+
+    # ---- hour x day-of-year chart (smoothed +/- CLIM_SMOOTH_DAYS days) ------------------------
+    shift_doy <- shiny::reactive({          # clock minus LST hours by day of year (0 or 1)
+      b <- base(); s <- tapply((b$hour_clock - b$hour) %% 24, b$doy, stats::median)
+      out <- numeric(CLIM_DOY_N); out[as.integer(names(s))] <- s; out
+    })
+    summ_doy <- shiny::reactive({
+      r <- rx(); fl <- flagged(); vars <- rx_constrained(r)
+      clim_summarise(fl, c("in_rx", paste0("pass_", vars), intersect(vars, c("temperature", "relativeHumidity",
+                                                                               "windSpeed", "solarRadiation"))),
+                     by = c("doy", hour_col()), smooth_days = CLIM_SMOOTH_DAYS)
+    })
+    sun_doy <- shiny::reactive({
+      m <- st()$meta
+      s <- sun_times(m$lat, m$lon, m$std_offset_h, seq_len(CLIM_DOY_N))
+      if (hour_col() == "hour_clock") s[, -1] <- s[, -1] + shift_doy()
+      s
+    })
+    output$doy <- plotly::renderPlotly({
+      shiny::validate(shiny::need(st(), "Load a station (sidebar or Station tab) to see its climatology."))
+      s <- summ_doy(); sun <- sun_doy(); vars <- rx_constrained(rx())
+      s <- s[s$doy %in% seq(1, CLIM_DOY_N, by = CLIM_DOY_STEP), ]     # every 3rd day (already smoothed over 15)
+      cells <- tip_cells(s, x_col = "doy", hour_col = hour_col(), rx_vars = vars,
+                         obs_minute = as.integer(names(which.max(table(st()$hourly$obs_minute)))),
+                         threshold = thr(), sun = sun)
+      ir <- s[s$value == "in_rx", ]
+      cells$stat <- ir$stat[match(paste(cells$doy, cells[[hour_col()]]), paste(ir$doy, ir[[hour_col()]]))]
+      ig <- rx_ignition(rx())
+      ign <- if (is.null(ig)) NULL else {
+        sh <- if (hour_col() == "hour_clock") 0 else shift_doy()
+        data.frame(doy = seq_len(CLIM_DOY_N), start = ig[1] - sh, end = ig[2] - sh)
+      }
+      plot_doy_heatmap(cells, hour_col = hour_col(), clock = hour_col() == "hour_clock", sun = sun, ign = ign,
+                       threshold = thr())
     })
 
     # month x hour cells outside the ignition period (clock time): washed out on the heatmap.
@@ -163,11 +199,11 @@ mod_climatology_server <- function(id, st, rx) {
       excl <- sum(ir$n_missing); tot <- sum(ir$n_valid) + excl
       lim <- if (length(s$vars)) paste(RX_VARS$label[match(s$vars, RX_VARS$var)], collapse = ", ") else "none (every hour counts)"
       shiny::div(class = "small text-muted mt-2",
-                 shiny::p(sprintf("Years %d-%d. Each cell pools every hour in that month and hour across those years. Limits on: %s.%s",
-                                  s$years[1], s$years[2], lim,
-                                  paste0(if (is.na(thr())) "" else sprintf(" Outlined: cells where at least %d%% of hours are in prescription.", round(thr())),
+                 shiny::p(sprintf("Years %d-%d. Day of year: each cell pools that hour over a 15-day window (7 days either side) across those years; lines show sunrise, sunset and civil twilight%s. Month x hour: each cell pools the whole month. Limits on: %s.%s",
+                                  s$years[1], s$years[2], if (is.null(rx_ignition(rx()))) "" else ", and the dashed lines the ignition period", lim,
+                                  paste0(if (is.na(thr())) "" else sprintf(" Orange: at least %d%% of hours in prescription (a contour line by day of year, outlined cells by month).", round(thr())),
                                          if (is.null(rx_ignition(rx()))) "" else
-                                           sprintf(" Washed out: hours outside the ignition period (%s).", rx_ignition_text(rx_ignition(rx())))))),
+                                           sprintf(" Washed out (month x hour): hours outside the ignition period (%s).", rx_ignition_text(rx_ignition(rx())))))),
                  shiny::p(sprintf("%s of %s hours (%s) are excluded because a limited variable is missing or was screened out; see Data quality.",
                                   format(excl, big.mark = ","), format(tot, big.mark = ","), tip_pct(excl / tot))))
     })

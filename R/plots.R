@@ -224,3 +224,65 @@ plot_year_day <- function(days, labels, zmax = 24, colors = CHART_SEQ, highlight
                                               "zoomIn2d", "zoomOut2d", "resetScale2d"),
                    toImageButtonOptions = list(format = "png", filename = "rx_same_dates", scale = 2))
 }
+
+# ---- Climatology: hour x day-of-year chart (WeatherSpark style) -----------------------
+# cells: doy, hour column, stat (share, smoothed), text (tip_cells). Hours run
+# down the chart (midnight at the top) on a numeric axis, so a cell for hour h
+# spans h to h+1 and the sun lines sit at their real times.
+# sun: doy, sunrise, sunset, civil_dawn, civil_dusk in the chart's hours.
+# ign: NULL or doy, start, end in the chart's hours (the ignition period).
+# threshold (%): a contour line where the share crosses it (NA = none).
+plot_doy_heatmap <- function(cells, hour_col = "hour", clock = FALSE, sun = NULL, ign = NULL, threshold = NA,
+                             colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
+  N <- CLIM_DOY_N
+  x <- sort(unique(cells$doy)); y <- 0:23 + 0.5      # x: the days drawn (every CLIM_DOY_STEP-th)
+  z <- matrix(NA_real_, 24, length(x)); tx <- matrix("", 24, length(x))
+  j <- match(cells$doy, x)
+  z[cbind(cells[[hour_col]] + 1, j)] <- 100 * cells$stat
+  tx[cbind(cells[[hour_col]] + 1, j)] <- cells$text
+  first <- as.integer(format(as.Date(sprintf("2001-%02d-01", 1:12)), "%j"))
+  p <- plotly::plot_ly() |>
+    plotly::add_heatmap(x = x, y = y, z = z, text = tx, hovertemplate = "%{text}<extra></extra>",
+                        colorscale = .plot_colorscale(colors), zmin = 0, zmax = 100,
+                        colorbar = list(title = list(text = "% of hours<br>in prescription", font = list(size = 12)),
+                                        ticksuffix = "%", tickvals = c(0, 25, 50, 75, 100), len = 0.9,
+                                        outlinewidth = 0, thickness = 14))
+  if (!is.na(threshold))
+    p <- plotly::add_contour(p, x = x, y = y, z = z, hoverinfo = "skip", showscale = FALSE,
+                             contours = list(start = threshold, end = threshold, size = 1, coloring = "none"),
+                             line = list(color = highlight, width = 2), showlegend = FALSE)
+  line <- function(p, yv, col, dash, name, width = 1.4)
+    plotly::add_lines(p, x = sun$doy, y = yv, line = list(color = col, width = width, dash = dash),
+                      hoverinfo = "skip", name = name, showlegend = TRUE)
+  if (!is.null(sun)) {
+    p <- line(p, sun$sunrise, "#e0a100", "solid", "Sunrise / sunset")
+    p <- plotly::add_lines(p, x = sun$doy, y = sun$sunset, line = list(color = "#e0a100", width = 1.4),
+                           hoverinfo = "skip", showlegend = FALSE)
+    p <- line(p, sun$civil_dawn, "#7a6a9a", "dot", "Civil twilight", 1.1)
+    p <- plotly::add_lines(p, x = sun$doy, y = sun$civil_dusk, line = list(color = "#7a6a9a", width = 1.1, dash = "dot"),
+                           hoverinfo = "skip", showlegend = FALSE)
+  }
+  if (!is.null(ign)) {
+    p <- plotly::add_lines(p, x = ign$doy, y = ign$start, line = list(color = "#222222", width = 1.3, dash = "dash"),
+                           hoverinfo = "skip", name = "Ignition period", showlegend = TRUE)
+    p <- plotly::add_lines(p, x = ign$doy, y = ign$end, line = list(color = "#222222", width = 1.3, dash = "dash"),
+                           hoverinfo = "skip", showlegend = FALSE)
+  }
+  if (!is.na(threshold))
+    p <- plotly::add_lines(p, x = c(NA_real_, NA_real_), y = c(NA_real_, NA_real_), line = list(color = highlight, width = 2),
+                           name = sprintf("%d%% of hours in prescription", round(threshold)), showlegend = TRUE)
+  p |>
+    plotly::layout(xaxis = .plot_axis(title = "", range = c(0.5, N + 0.5), tickvals = first, ticktext = month.abb,
+                                      side = "top", ticklabelmode = "period"),
+                   yaxis = .plot_axis(title = if (clock) "Hour (clock time)" else "Hour (LST)", range = c(24, 0),
+                                      tickvals = seq(0, 21, 3), ticktext = sprintf("%02d:00", seq(0, 21, 3))),
+                   legend = list(orientation = "h", x = 0, y = -0.04, yanchor = "top", font = list(size = 11)),
+                   margin = list(l = 70, r = 20, t = 40, b = 40),
+                   plot_bgcolor = "rgba(0,0,0,0)", paper_bgcolor = "rgba(0,0,0,0)",
+                   hoverlabel = list(bgcolor = "white", bordercolor = "#cccccc", font = list(size = 13, color = "#222222"),
+                                     align = "left")) |>
+    plotly::config(displaylogo = FALSE,
+                   modeBarButtonsToRemove = c("zoom2d", "pan2d", "select2d", "lasso2d", "autoScale2d",
+                                              "zoomIn2d", "zoomOut2d", "resetScale2d"),
+                   toImageButtonOptions = list(format = "png", filename = "rx_day_of_year", scale = 2))
+}

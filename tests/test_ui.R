@@ -170,6 +170,11 @@ local({
         .check("D2 the table output renders, with cells at or above 40% in bold",
                grepl("<table", paste(output$tbl, collapse = ""), fixed = TRUE) && grepl("<b>", paste(output$tbl, collapse = ""), fixed = TRUE))
         .check("D3 the heatmap output renders", !is.null(output$heat) && grepl("heatmap", paste(output$heat, collapse = ""), fixed = TRUE))
+        dj <- paste(output$doy, collapse = "")
+        .check("D3b the day-of-year chart renders with sun lines and the threshold contour",
+               grepl("heatmap", dj, fixed = TRUE) && grepl("Sunrise / sunset", dj, fixed = TRUE) && grepl("contour", dj, fixed = TRUE))
+        .check("D3c day-of-year summary: 365 days x 24 hours of in_rx", sum(summ_doy()$value == "in_rx") == 365 * 24)
+        .check("D3d the widget stays a sensible size (under 4 MB)", nchar(dj) < 4e6, sprintf("%.1f MB", nchar(dj) / 1e6))
         tm <- paste(output$totals_main, collapse = "")
         .check("D5 the totals table renders, 12 months + Year", grepl("<table", tm, fixed = TRUE) && grepl("Year", tm, fixed = TRUE) &&
                  all(vapply(month.abb, grepl, logical(1), x = tm, fixed = TRUE)))

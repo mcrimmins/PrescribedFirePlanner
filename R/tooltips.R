@@ -49,8 +49,9 @@ tip_value <- function(var, x) {
 #   hour_col  "hour" (LST) or "hour_clock"
 #   obs_minute  station's observation minute, shown with LST labels
 #   threshold   outline threshold in % (NA = none); cells at or above it say so
+#   sun         optional data frame (doy, sunrise, sunset) in the chart's hours, for x_col "doy"
 tip_cells <- function(long, x_col = "month", hour_col = "hour", rx_vars = character(0),
-                      obs_minute = NA_integer_, threshold = NA_real_) {
+                      obs_minute = NA_integer_, threshold = NA_real_, sun = NULL) {
   clock <- hour_col == "hour_clock"
   key <- paste(long[[x_col]], long[[hour_col]])
   ir <- long[long$value == "in_rx", ]
@@ -59,7 +60,10 @@ tip_cells <- function(long, x_col = "month", hour_col = "hour", rx_vars = charac
     s <- long[long$value == val, ]
     s$stat[match(ir$key, paste(s[[x_col]], s[[hour_col]]))]
   }
-  when_x <- if (x_col == "month") month.name[ir[[x_col]]] else paste(x_col, ir[[x_col]])
+  when_x <- if (x_col == "month") month.name[ir[[x_col]]]
+            else if (x_col == "doy") paste0(format(as.Date("2001-01-01") + ir[[x_col]] - 1, "%d %b"),
+                                            " (\u00b1", CLIM_SMOOTH_DAYS, " days)")
+            else paste(x_col, ir[[x_col]])
   hr <- tip_hour_label(ir[[hour_col]], clock)
   if (!clock && !is.na(obs_minute) && obs_minute > 0)
     hr <- paste0(hr, sprintf(" (read at :%02d)", as.integer(obs_minute)))
@@ -70,6 +74,11 @@ tip_cells <- function(long, x_col = "month", hour_col = "hour", rx_vars = charac
   if (!is.na(threshold))
     lines <- paste0(lines, ifelse(!is.na(ir$stat) & 100 * ir$stat >= threshold,
                                   sprintf("<br>Outlined: at or above your %d%% threshold", round(threshold)), ""))
+  if (!is.null(sun) && x_col == "doy") {
+    k <- match(ir$doy, sun$doy)
+    lines <- paste0(lines, "<br>Sunrise ", sun_fmt_hm(sun$sunrise[k]), ", sunset ", sun_fmt_hm(sun$sunset[k]),
+                    if (clock) " clock time" else " LST")
+  }
   lines <- paste0(lines, ifelse(ir$n_missing > 0,
                                 paste0("<br>Excluded: ", tip_hours(ir$n_missing), " (missing or screened)"), ""))
 
