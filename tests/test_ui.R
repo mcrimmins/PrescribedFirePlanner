@@ -114,6 +114,16 @@ local({
     .check("B11.11 Same dates: hours scale split at the minimum window", identical(sh$tickvals, as.numeric(0:7)) &&
              grepl("min window", sh$ticktext[5], fixed = TRUE))
 
+    .section("B12. About page")
+    .check("B12.1 the About tab names both contacts with mailto links",
+           grepl('href="mailto:crimmins@arizona.edu"', html, fixed = TRUE) && grepl('href="mailto:cmaxwell1@arizona.edu"', html, fixed = TRUE) &&
+             grepl("Chuck Maxwell", html, fixed = TRUE) && grepl("Mike Crimmins", html, fixed = TRUE))
+    .check("B12.2 ... has a getting-started list and a line for each tab",
+           grepl("Getting started", html, fixed = TRUE) &&
+             all(vapply(c("Climatology", "Season tracker", "Past event", "Same dates", "Data quality"), function(t)
+               grepl(paste0("<dt>", t, "</dt>"), html, fixed = TRUE), logical(1))))
+    .check("B12.3 peak gust is a prescription variable in the sidebar", "rx-sl_gustSpeed" %in% ids && "rx-on_gustSpeed" %in% ids)
+
     .section("C. Prescription module (testServer)")
     ex_on <- .rx_example_limits()
     shiny::testServer(mod_rx_server, {

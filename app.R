@@ -42,6 +42,10 @@ app_css <- "
 .dq-item { border-left: 4px solid var(--bs-border-color); padding: .5rem .75rem; margin-bottom: .6rem; background: var(--bs-body-bg); }
 .dq-affects { border-left-color: var(--bs-warning); }
 .coming-soon { max-width: 46rem; }
+.about-page { max-width: 52rem; }
+.about-page h5 { margin-top: 1.4rem; }
+.about-tabs dt { margin-top: .6rem; }
+.about-tabs dd { margin-left: 0; color: var(--bs-body-color); }
 /* by-limit tables: one line per cell, labels left, counts right */
 .tbl-limits th, .tbl-limits td { white-space: nowrap; }
 .tbl-limits td:nth-child(-n+2), .tbl-limits th:nth-child(-n+2) { text-align: left !important; }
@@ -86,21 +90,54 @@ ui <- page_navbar(
             coming("Synthetic forecast", "Practice reading a forecast: pick a past issue time, see a forecast with widening uncertainty, then reveal what happened. Always marked SYNTHETIC - FOR TRAINING ONLY.")),
   nav_panel("Data quality", value = "quality", mod_quality_ui("quality")),
   nav_panel("About", value = "about",
-    div(class = "coming-soon",
+    div(class = "about-page",
       h4("About this tool"),
-      p("The Prescribed Fire Weather Explorer (RxWx) shows how often, and when, a weather station's conditions fall inside a prescribed-fire prescription,",
-        " using hourly observations from 2005 to 2025. It is a training tool for the Prescribed Fire Training Center, under development; it is not an operational planning tool."),
-      h5("How to read the heatmap"),
-      p("Each cell is one month and one hour of the day. Its colour is the share of all those hours, across the baseline years,",
-        " that met every limit you turned on. Hover a cell for the count of hours behind it, how many were excluded, the limit that failed most often, and typical values."),
-      p("Colours are warm below the outline threshold (50% to start; set it above the chart) and blue at or above it, getting darker as the share rises, in 10% steps. ",
-        "Cells at or above the threshold also get a black outline, so the usual burn window stands out with or without colour vision."),
-      p("Hours are local standard time (LST) all year, as FEMS reports them. At stations that observe daylight saving, a toggle shows clock time instead."),
+      p("The Prescribed Fire Weather Explorer (RxWx) shows how often, and when, a weather station's conditions fall inside a prescribed-fire prescription. ",
+        "It uses hourly RAWS observations from 2005 to 2025, the latest observations, and the FEMS forecast. It is a training tool for the Prescribed Fire Training Center, ",
+        "under development; it is not an operational planning tool, and the presets are draft examples, not recommendations."),
+
+      h5("Getting started"),
+      tags$ol(
+        tags$li(strong("Choose a station."), " Pick a featured station in the sidebar (these load instantly), search by name or ID, or click one on the Station tab map."),
+        tags$li(strong("Set the prescription."), " Start from a preset, then adjust it: tick a variable to limit it and drag the slider ends. A handle at the end of a slider means no limit on that side. ",
+                "Wind direction is a clockwise sector chosen from two compass menus."),
+        tags$li(strong("Add an ignition period and a minimum window"), " if you like. Counts, runs and usable days then use only the ignition hours (clock time), ",
+                "and a usable day is one with at least the minimum window of consecutive hours in prescription."),
+        tags$li(strong("Explore the tabs."), " Every chart follows the sidebar. Hover for details, drag to zoom, double-click to reset, and use the CSV buttons to report the counts.")),
+
+      h5("The tabs"),
+      tags$dl(class = "about-tabs",
+        tags$dt("Climatology"), tags$dd("When is this station usually in prescription? The share of hours, 2005-2025, by day of year and hour (with sunrise, sunset and the ignition period), ",
+                                        "by month and hour, and for each limit on its own, so you can see which limit closes the window. Daily ranges show the spread of each variable through the year. ",
+                                        "The tables below count hours in a typical year, the lowest and highest years, and the totals."),
+        tags$dt("Season tracker"), tags$dd("How is this season going? Hours in prescription each day for the current year (with the latest observations and the FEMS forecast) or any past year, ",
+                                           "against the typical year, its middle half and the record. \"Last 7 days + forecast\" zooms to the coming week. Click a day to open it on Past event."),
+        tags$dt("Past event"), tags$dd("What happened, hour by hour? Up to 14 days of temperature, RH, wind and any other limited variable, with the prescription range shaded, ",
+                                       "the hours in prescription marked, and an x wherever a limit failed. Useful for reviewing a burn day."),
+        tags$dt("Same dates"), tags$dd("How does one window of the year (say 15 Mar to 15 Apr) compare across every year in the record? Hours in prescription each day, usable days outlined, ",
+                                       "and per-year totals."),
+        tags$dt("Data quality"), tags$dd("What to know about this station's record: gaps, sensor faults that were removed, and changes in how readings were taken. ",
+                                         "The badge beside the station name counts the items that affect results."),
+        tags$dt("Forecast"), tags$dd("A synthetic practice forecast for class exercises is planned; real FEMS forecasts are already on the Season tracker.")),
+
+      h5("Reading the colours"),
+      p("On the heatmaps, warm colours are below your outline threshold and blues at or above it, getting darker as the share rises, in 10% steps. ",
+        "The black line marks the threshold, so the usual burn window stands out with or without colour vision. On Same dates the colours split at the minimum window instead. ",
+        "On Past event, blue points are hours in prescription and an orange x marks a limit that failed; on the Season tracker, hatched bars are forecast and triangles mark usable days."),
+      p("Hours are local standard time (LST) all year, as FEMS reports them. At stations that observe daylight saving, a toggle shows clock time instead; the ignition period is always clock time."),
+
       h5("Data"),
-      p("Hourly RAWS weather from the USDA Forest Service Fire Environment Mapping System (FEMS). Featured stations are bundled with the app as a snapshot;",
-        " others download live. Clear sensor faults are removed before analysis and listed on the Data quality tab."),
+      p("Hourly RAWS weather from the USDA Forest Service Fire Environment Mapping System (FEMS). Featured stations are bundled with the app as a snapshot and topped up ",
+        "with the latest observations when you open the Season tracker; other stations download from FEMS. Clear sensor faults are removed before analysis and listed on the Data quality tab. ",
+        "FEMS forecasts are hourly, about 7 days ahead, and are never mixed into observed counts."),
+
+      h5("Contact"),
+      p("Questions, ideas or problems with the tool:"),
+      tags$ul(
+        tags$li("Mike Crimmins, University of Arizona Cooperative Extension: ", tags$a(href = "mailto:crimmins@arizona.edu", "crimmins@arizona.edu")),
+        tags$li("Chuck Maxwell: ", tags$a(href = "mailto:cmaxwell1@arizona.edu", "cmaxwell1@arizona.edu"))),
       tags$img(src = "UA_CSAP_CLIMAS_logos_horiz.png", alt = "University of Arizona, CSAP and CLIMAS logos", style = "max-width: 420px; width: 100%;"),
-      p(class = "small text-muted mt-2", "Mike Crimmins, University of Arizona Cooperative Extension."))),
+      p(class = "small text-muted mt-2", paste0("Version ", APP_VERSION, ".")))),
   nav_spacer(),
   nav_item(tags$a(href = "https://www.arizona.edu", target = "_blank", rel = "noopener", title = "The University of Arizona", class = "ua-link",
                   tags$img(src = "UAlogo_banner.png", class = "ua-logo", alt = "The University of Arizona")))

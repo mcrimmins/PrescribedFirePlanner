@@ -94,6 +94,15 @@ local({
              !length(rx_problems(data.frame(var = r$var, min = r$min, max = r$max))) }, logical(1))) &&
              setequal(RX_PRESET_META$preset, unique(RX_PRESETS$preset)) && all(RX_PRESET_META$min_window >= 1))
 
+    .section("D3. Peak gust")
+    hg <- data.frame(temperature = 60, relativeHumidity = 30, windSpeed = 8, windDirection = 200, precipitation = 0,
+                     solarRadiation = 500, gustSpeed = c(12, 25, 26, NA))
+    fg <- rx_flag(hg, rx_new(gustSpeed = c(NA, 25)))
+    .check("D3.1 a gust limit of 25 mph: 12 and 25 pass, 26 fails, missing is not known",
+           identical(fg$pass_gustSpeed[1:3], c(TRUE, TRUE, FALSE)) && is.na(fg$in_rx[4]))
+    .check("D3.2 gust is in RX_VARS and every preset (off by default)",
+           "gustSpeed" %in% RX_VARS$var && all(!RX_PRESETS$on[RX_PRESETS$var == "gustSpeed"]))
+
     .section("E. Problems are reported in plain words")
     pr <- function(...) rx_problems(data.frame(..., stringsAsFactors = FALSE))
     .check("E1 min above max", any(grepl("minimum is above the maximum", pr(var = "temperature", min = 90, max = 40), fixed = TRUE)))

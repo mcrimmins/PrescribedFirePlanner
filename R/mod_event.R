@@ -104,7 +104,7 @@ mod_event_server <- function(id, st, rx) {
       vars <- rx_constrained(r)
       fl$in_ign <- rx_in_ignition(fl, rx_ignition(r))
       list(fl = fl, rx = r, vars = vars, dates = d,
-           show = c(.EVENT_ALWAYS, intersect(c("precipitation", "solarRadiation"), vars)),
+           show = RX_VARS$var[RX_VARS$var %in% c(.EVENT_ALWAYS, intersect(c("gustSpeed", "precipitation", "solarRadiation"), vars))],
            # counts, runs and usable days use only the ignition period
            totals = totals_event(fl[fl$in_ign, ], vars, hour_col = if (clock()) "hour_clock" else "hour"))
     })

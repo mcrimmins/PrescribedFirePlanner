@@ -27,6 +27,8 @@ It will be developed iteratively with PFTC feedback and could become operational
   Wind direction: 0 and 360 are the same direction, and **calm hours (0 mph) pass a direction limit**,
   since direction doesn't matter with no wind (the wind-speed limit still applies).
   NFDRS variables (1-hr/10-hr fuel moisture, ERC, BI) can be added later the same way.
+  *Added 4 Nov 2026:* **peak gust** (mph, the hourly peak gust FEMS reports as `peak_gust_speed`), a linear limit like
+  wind speed (slider 0-60 mph), off in every preset (25 mph max when turned on in the example).
   A preset also carries its **ignition period** (start/end hour) and a **minimum usable window** (hours).
   *Built 2026-11-02:* five DRAFT presets for PFTC review (Example (all day), Grass / rangeland, Southern pine understory,
   Western conifer understory, Pile burning) in `RX_PRESETS` / `RX_PRESET_META`. Choosing one fills every control; the
@@ -264,6 +266,7 @@ detail, so every encoding must work in greyscale. Checked with simulations (`pal
 | *(Synthetic forecast with reveal: deferred)* | |
 | Exploratory one-page PDF | Image export, saved user prescriptions |
 | Public link on Posit Connect (viz.datascience.arizona.edu) | Operational use |
+| About tab: how to use each tab, reading the colours, contacts (Mike Crimmins, Chuck Maxwell) | |
 
 ## Open items
 - PFTC review of the drafted presets, curated stations and forecast error sizes.

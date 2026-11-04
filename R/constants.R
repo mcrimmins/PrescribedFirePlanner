@@ -21,22 +21,22 @@ CLIM_DOY_STEP     <- 3             # the day-of-year chart draws every 3rd day: 
 # through north). slider_min/max/step drive the UI controls. NFDRS variables
 # join later as more rows here (plus their columns in R/hourly.R).
 RX_VARS <- data.frame(
-  var        = c("temperature", "relativeHumidity", "windSpeed", "windDirection", "precipitation", "solarRadiation"),
-  label      = c("Temperature", "Relative humidity", "20-ft wind speed", "Wind direction", "Precipitation", "Solar radiation"),
-  units      = c("\u00b0F", "%", "mph", "\u00b0", "in/hr", "W/m\u00b2"),
-  kind       = c("linear", "linear", "linear", "circular", "linear", "linear"),
-  slider_min = c(-20, 0, 0, 0, 0, 0),
-  slider_max = c(120, 100, 40, 360, 1, 1300),
-  step       = c(1, 1, 1, 5, 0.01, 10),
+  var        = c("temperature", "relativeHumidity", "windSpeed", "gustSpeed", "windDirection", "precipitation", "solarRadiation"),
+  label      = c("Temperature", "Relative humidity", "20-ft wind speed", "Peak gust", "Wind direction", "Precipitation", "Solar radiation"),
+  units      = c("\u00b0F", "%", "mph", "mph", "\u00b0", "in/hr", "W/m\u00b2"),
+  kind       = c("linear", "linear", "linear", "linear", "circular", "linear", "linear"),
+  slider_min = c(-20, 0, 0, 0, 0, 0, 0),
+  slider_max = c(120, 100, 40, 60, 360, 1, 1300),
+  step       = c(1, 1, 1, 1, 5, 0.01, 10),
   stringsAsFactors = FALSE)
 
 # Starting prescription shown before presets exist (v0.1). DRAFT example
 # values, not a recommendation; labelled as an example in the UI.
 RX_EXAMPLE <- data.frame(
-  var = c("temperature", "relativeHumidity", "windSpeed", "windDirection", "precipitation", "solarRadiation"),
-  on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
-  min = c(40, 20, 2, 180, 0, 0),
-  max = c(85, 55, 15, 270, 0, 1300),
+  var = c("temperature", "relativeHumidity", "windSpeed", "gustSpeed", "windDirection", "precipitation", "solarRadiation"),
+  on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, TRUE, FALSE),
+  min = c(40, 20, 2, 0, 180, 0, 0),
+  max = c(85, 55, 15, 25, 270, 0, 1300),
   stringsAsFactors = FALSE)
 # Presets: DRAFT starting points for training, written by Claude for PFTC to
 # review -- not recommendations. Choosing one fills the sidebar; every value
@@ -48,19 +48,19 @@ RX_EXAMPLE <- data.frame(
   data.frame(preset = id, var = RX_EXAMPLE$var, on = on, min = min, max = max, stringsAsFactors = FALSE)
 RX_PRESETS <- rbind(
   .rx_preset("example", RX_EXAMPLE$on, RX_EXAMPLE$min, RX_EXAMPLE$max),
-  #                     temp   RH     wind   wdir   precip  solar
-  .rx_preset("grass",   on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
-                        min = c(40,    15,    4,   180,    0,     0),
-                        max = c(85,    40,   15,   270,    0,  1300)),
-  .rx_preset("pine",    on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
-                        min = c(35,    30,    4,   180,    0,     0),
-                        max = c(80,    55,   12,   270,    0,  1300)),
-  .rx_preset("conifer", on  = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
-                        min = c(35,    20,    2,   180,    0,     0),
-                        max = c(80,    45,   12,   270,    0,  1300)),
-  .rx_preset("piles",   on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE),
-                        min = c(-20,   25,    0,   180,    0,     0),
-                        max = c(60,   100,   10,   270,    1,  1300)))
+  #                     temp   RH     wind   gust   wdir   precip  solar
+  .rx_preset("grass",   on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, TRUE, FALSE),
+                        min = c(40,    15,    4,     0,   180,    0,     0),
+                        max = c(85,    40,   15,    25,   270,    0,  1300)),
+  .rx_preset("pine",    on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, TRUE, FALSE),
+                        min = c(35,    30,    4,     0,   180,    0,     0),
+                        max = c(80,    55,   12,    20,   270,    0,  1300)),
+  .rx_preset("conifer", on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, TRUE, FALSE),
+                        min = c(35,    20,    2,     0,   180,    0,     0),
+                        max = c(80,    45,   12,    20,   270,    0,  1300)),
+  .rx_preset("piles",   on  = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE),
+                        min = c(-20,   25,    0,     0,   180,    0,     0),
+                        max = c(60,   100,   10,    20,   270,    1,  1300)))
 RX_PRESET_META <- data.frame(stringsAsFactors = FALSE,
   preset     = c("example", "grass", "pine", "conifer", "piles"),
   label      = c("Example (all day)", "Grass / rangeland", "Southern pine understory",
@@ -105,7 +105,7 @@ QUALITY_STEP_MIN_SIDE   <- 3     # years needed on each side of a step
 QUALITY_TIMING_VARS     <- c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")
 QUALITY_COVERAGE_MIN    <- 80    # % of hours with a value; a baseline year below this "affects results"
 
-APP_VERSION <- "0.2.0"   # written into CSV exports; bump with each deploy tag
+APP_VERSION <- "0.3.0"   # written into CSV exports; bump with each deploy tag
 
 # ---- hour totals (R/totals.R) ---------------------------------------------------
 # A year-month (or year) with fewer of its hours reporting than this is left

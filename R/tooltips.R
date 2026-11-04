@@ -38,7 +38,7 @@ tip_value <- function(var, x) {
          format(signif(x, 3)))
 }
 
-.tip_short <- c(temperature = "temperature", relativeHumidity = "RH", windSpeed = "wind speed",
+.tip_short <- c(temperature = "temperature", relativeHumidity = "RH", windSpeed = "wind speed", gustSpeed = "gusts",
                 windDirection = "wind direction", precipitation = "precipitation", solarRadiation = "solar radiation")
 
 # ---- heatmap cells -----------------------------------------------------------------------
@@ -91,10 +91,10 @@ tip_cells <- function(long, x_col = "month", hour_col = "hour", rx_vars = charac
                                tip_pct(fails[cbind(seq_len(nrow(ir)), pmax(worst, 1))]), " of hours)"))
     lines <- paste0(lines, worst_txt)
     # precipitation is left out: a mean hourly rate of ~0.00 in/hr tells a reader nothing
-    typ_vars <- intersect(rx_vars, c("temperature", "relativeHumidity", "windSpeed", "solarRadiation"))
+    typ_vars <- intersect(rx_vars, c("temperature", "relativeHumidity", "windSpeed", "gustSpeed", "solarRadiation"))
     typ_vars <- typ_vars[typ_vars %in% long$value]
     if (length(typ_vars)) {
-      typ_lab <- c(temperature = "", relativeHumidity = "RH ", windSpeed = "wind ", solarRadiation = "solar ")
+      typ_lab <- c(temperature = "", relativeHumidity = "RH ", windSpeed = "wind ", gustSpeed = "gusts ", solarRadiation = "solar ")
       stats_by <- lapply(typ_vars, get_stat)
       typ <- vapply(seq_len(nrow(ir)), function(i)
         paste(vapply(seq_along(typ_vars), function(k) paste0(typ_lab[[typ_vars[k]]], tip_value(typ_vars[k], stats_by[[k]][i])),
@@ -168,6 +168,8 @@ tip_event_hours <- function(flagged, rx, clock = FALSE, obs_minute = NA_integer_
   wx <- paste0("Temp ", vapply(flagged$temperature, function(x) tip_value("temperature", x), ""),
                " \u00b7 RH ", vapply(flagged$relativeHumidity, function(x) tip_value("relativeHumidity", x), ""),
                "<br>Wind ", vapply(flagged$windSpeed, function(x) tip_value("windSpeed", x), ""),
+               if (!is.null(flagged$gustSpeed)) ifelse(is.na(flagged$gustSpeed), "",
+                                                       paste0(", gusts ", vapply(flagged$gustSpeed, function(x) tip_value("gustSpeed", x), ""))) else "",
                ifelse(!is.na(flagged$windSpeed) & flagged$windSpeed == 0, " (calm)",
                       ifelse(is.na(flagged$windDirection), "", paste0(" from ", tip_compass(flagged$windDirection),
                                                                       " (", round(flagged$windDirection), "\u00b0)"))),

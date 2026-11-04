@@ -74,7 +74,7 @@ mod_climatology_server <- function(id, st, rx) {
       r <- rx(); fl <- flagged()
       vars <- rx_constrained(r)
       vals <- c("in_rx", paste0("pass_", vars), intersect(vars, c("temperature", "relativeHumidity", "windSpeed",
-                                                                 "precipitation", "solarRadiation")))
+                                                                 "gustSpeed", "precipitation", "solarRadiation")))
       list(long = clim_summarise(fl, vals, by = c("month", hour_col())), vars = vars, n = nrow(fl),
            years = range(fl$year))
     })
@@ -140,7 +140,7 @@ mod_climatology_server <- function(id, st, rx) {
     summ_doy <- shiny::reactive({
       r <- rx(); fl <- flagged(); vars <- rx_constrained(r)
       clim_summarise(fl, c("in_rx", paste0("pass_", vars), intersect(vars, c("temperature", "relativeHumidity",
-                                                                               "windSpeed", "solarRadiation"))),
+                                                                               "windSpeed", "gustSpeed", "solarRadiation"))),
                      by = c("doy", hour_col()), smooth_days = CLIM_SMOOTH_DAYS)
     })
     sun_doy <- shiny::reactive({
@@ -193,7 +193,7 @@ mod_climatology_server <- function(id, st, rx) {
     })
 
     # ---- daily ranges: percentiles of the hours that count (ignition period, else all day) ----
-    range_vars <- shiny::reactive(intersect(rx_constrained(rx()), c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")))
+    range_vars <- shiny::reactive(intersect(rx_constrained(rx()), c("temperature", "relativeHumidity", "windSpeed", "gustSpeed", "solarRadiation")))
     ranges <- shiny::reactive({
       r <- rx(); fl <- flagged(); fl <- fl[rx_in_ignition(fl, rx_ignition(r)), ]
       vars <- range_vars(); shiny::req(length(vars))
@@ -213,10 +213,10 @@ mod_climatology_server <- function(id, st, rx) {
     output$ranges_box <- shiny::renderUI({
       shiny::validate(shiny::need(st(), "Load a station first."))
       vars <- range_vars()
-      shiny::validate(shiny::need(length(vars) > 0, "Turn on a temperature, RH, wind speed or solar radiation limit to see its daily range."))
+      shiny::validate(shiny::need(length(vars) > 0, "Turn on a temperature, RH, wind speed, gust or solar radiation limit to see its daily range."))
       shiny::tagList(lapply(vars, function(v) shiny::tagList(var_title(v), plotly::plotlyOutput(ns(paste0("range_", v)), height = "240px"))))
     })
-    for (v0 in c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")) local({
+    for (v0 in c("temperature", "relativeHumidity", "windSpeed", "gustSpeed", "solarRadiation")) local({
       v <- v0
       output[[paste0("range_", v)]] <- plotly::renderPlotly({
         shiny::req(v %in% range_vars())

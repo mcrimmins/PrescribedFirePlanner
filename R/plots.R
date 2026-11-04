@@ -211,7 +211,7 @@ plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, cloc
         shapes <- c(shapes, list(band(a, b)), if (!is.na(lo)) list(edge(lo)), if (!is.na(hi)) list(edge(hi)))
       }
     }
-    lab <- if (v == "windSpeed") "Wind (mph)" else if (v == "relativeHumidity") "RH (%)" else
+    lab <- if (v == "windSpeed") "Wind (mph)" else if (v == "gustSpeed") "Gust (mph)" else if (v == "relativeHumidity") "RH (%)" else
            if (v == "windDirection") "Wind dir" else paste0(sub(" .*", "", m$label), " (", m$units, ")")
     lay[[ylay(ax)]] <- .plot_axis(domain = c(bottom[ax], top[ax]), range = rng,
                                   title = list(text = lab, font = list(size = 11, color = "#555555")),
@@ -390,7 +390,7 @@ plot_daily_range <- function(q, var, lo = NA, hi = NA, text = NULL, band = CHART
     plotly::add_lines(y = ~q50, line = list(color = "#333333", width = 2), text = text, hoverinfo = "text", name = "Median") |>
     plotly::layout(xaxis = .plot_axis(title = "", range = c(1, CLIM_DOY_N), tickvals = first, ticktext = month.abb),
                    yaxis = .plot_axis(title = paste0(c(temperature = "Temperature", relativeHumidity = "RH", windSpeed = "Wind",
-                                                       solarRadiation = "Solar")[[var]], " (", m$units, ")"), range = yr,
+                                                       gustSpeed = "Gust", solarRadiation = "Solar")[[var]], " (", m$units, ")"), range = yr,
                                       showgrid = TRUE, gridcolor = "#eeeeee"),
                    shapes = shapes, hovermode = "x", showlegend = FALSE,
                    margin = list(l = 60, r = 10, t = 10, b = 25),

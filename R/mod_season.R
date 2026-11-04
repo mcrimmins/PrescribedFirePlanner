@@ -160,7 +160,7 @@ mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
       d <- days(); vars <- rx_constrained(rx()); w <- win()
       meas <- c("in_rx", paste0("pass_", vars))
       ttl <- c("All limits (h)", paste0(c(temperature = "Temperature", relativeHumidity = "RH", windSpeed = "Wind",
-                                           windDirection = "Wind dir", precipitation = "Precip", solarRadiation = "Solar")[vars], " met (h)"))
+                                           gustSpeed = "Gust", windDirection = "Wind dir", precipitation = "Precip", solarRadiation = "Solar")[vars], " met (h)"))
       p <- plot_season(d, ref()$bands, meas, ttl, xrange = xrange(),
                        today = if (is_current()) today() else NULL, ymax = hours_per_day(), year = year())
       if (!shiny::isolate(rendered())) rendered(TRUE)
