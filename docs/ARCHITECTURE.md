@@ -108,6 +108,12 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
   call instead of multiplying `stat` back out. Per-year counts use `by = c("year", "month")` or `c("year", "date")`, no
   smoothing; the median year, range and total are taken from those rows in `R/totals.R` (`totals_*`, presentation of
   counts only: no flagging, no second aggregation), which also writes the CSV header lines.
+- `hourly_live(st, fetch, now)` / `hourly_merge_live(st, live)` (in `R/hourly.R`): the Season tracker's live top-up.
+  Fetches from a week before the record's end to 8 days ahead. Observed rows (type "O") after the record, through the
+  latest observation, are screened and appended. Forecast rows (type "F") after that come back separately in the same
+  columns, unscreened, and are never merged into `st$hourly`. `totals_season_days()`, `totals_season_reference()` and
+  `totals_season_summary()` in `R/totals.R` count them (observed and forecast kept apart). `R/mod_season.R` returns
+  `st_full` (the record plus live observations), which Past event and Same dates use, and `goto` (a clicked day).
 - `hourly_window(h, start, end)` (in `R/hourly.R`): rows whose month-day is in the window, with `wyear` (the year the window
   starts in, for windows through New Year) and `wday`; attr `window_days` lists every day label. `hourly_window_ndays()`
   gives each year's day count for the coverage rule. `totals_window()` turns the flagged rows into per-day, per-year and

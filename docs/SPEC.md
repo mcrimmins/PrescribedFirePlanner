@@ -136,7 +136,7 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   coverage is starred and left out); the same per limit; Per year and Daily CSVs. 29 Feb is its own column, blank in
   non-leap years; a 29 Feb window end is read as 28 Feb.
 - **Season tracker** (scoped 2026-11-04 from collaborator feedback; the "Rx Burn Period" component of the project doc,
-  BPT-style; *not built yet*):
+  BPT-style; *built 2026-11-04*):
   - **Placement:** a tab after Climatology. It uses the sidebar's station, prescription, ignition period and minimum window.
   - **Year pull-down:** the current year by default, then every year in the record.
   - **Range:** opens on the whole calendar year, with a settable season window (start and end month-day) that zooms
@@ -164,6 +164,9 @@ using the same wording, units and time label ("LST", or the clock-time zone when
     observed or forecast. Zoom and pan are linked across the panels. **Clicking a day opens its week on Past event.**
   - **Totals:** season-to-date hours in prescription and usable days against the typical year, plus a CSV, in the same
     style as the other tabs.
+  - *As built:* the season window stays inside one calendar year (a window through New Year is refused in plain words).
+    Past event and Same dates use the topped-up record, so a click on a recent day has data. The reference counts only
+    days with at least 80% of the ignition hours usable.
 - **Synthetic forecast:** *deferred 2026-11-04* (decide after the Season tracker).
 - **Synthetic forecast:**
   - Pick a past issue time and get a 1–7 day forecast of temperature, RH, wind speed and wind direction as a

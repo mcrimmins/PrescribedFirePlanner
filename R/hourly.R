@@ -355,3 +355,68 @@ hourly_window_ndays <- function(wyear, start, end) {
   }
   vapply(wyear, one, integer(1))
 }
+
+# ---- live top-up and FEMS forecast (Season tracker) ---------------------------------
+# A bundled snapshot ends on its build date and a live download ends yesterday,
+# so the current season needs the latest observations and FEMS's hourly
+# forecast (observation_type "F": hourly, about 7 days ahead, starting the hour
+# after the latest observation; tests/test_fems_forecast.R, 4 Nov 2026).
+#
+#   hourly_live(st, fetch = fems_download_weather, now = Sys.time())
+#     list(obs, fc, fetched_at, fc_start)
+#     obs  observed hours after the station's last hour, through the latest
+#          observation, in the standard table, screened (with 7 days of
+#          overlap for the stuck-value rules, then trimmed)
+#     fc   forecast hours after the latest observation: same columns, source
+#          "FEMS forecast", NOT screened (model output, not a sensor)
+#   hourly_merge_live(st, live)   st with live$obs appended to st$hourly
+#
+# `fetch` is the download function (tests pass a fake).
+.hourly_key <- function(d, h) as.integer(d) * 24L + as.integer(h)
+
+hourly_live <- function(st, fetch = fems_download_weather, now = Sys.time()) {
+  m <- st$meta; h0 <- st$hourly
+  has <- rowSums(!is.na(h0[, c("temperature", "relativeHumidity", "windSpeed")])) > 0
+  last_key <- max(.hourly_key(h0$date[has], h0$hour[has]))
+  last_date <- max(h0$date[has])
+  today <- as.Date(format(now, tz = m$tz))
+  raw <- fetch(m$station_id, last_date - 7, today + 8, verbose = FALSE)
+  empty <- h0[0, , drop = FALSE]
+  if (is.null(raw) || !nrow(raw)) return(list(obs = empty, fc = empty, fetched_at = now, fc_start = NA))
+  rt <- toupper(raw$record_type)
+
+  obs <- empty
+  if (any(rt == "O")) {
+    o <- hourly_qc(hourly_add_calendar(hourly_from_fems(raw[rt == "O", ], source = "FEMS (live)"), m$tz))
+    attr(o, "qc_log") <- NULL; attr(o, "grid_added") <- NULL
+    k <- .hourly_key(o$date, o$hour)
+    got <- rowSums(!is.na(o[, c("temperature", "relativeHumidity", "windSpeed")])) > 0
+    last_obs <- if (any(got)) max(k[got]) else last_key
+    obs <- o[k > last_key & k <= last_obs, intersect(names(h0), names(o)), drop = FALSE]
+    last_key <- max(last_key, last_obs)
+  }
+
+  fc <- empty
+  if (any(rt == "F")) {
+    f <- raw[rt == "F", , drop = FALSE]
+    f <- f[!duplicated(.hourly_key(f$date, f$hour)), , drop = FALSE]
+    f <- f[order(f$date, f$hour), , drop = FALSE]
+    t <- data.frame(station_id = as.character(f$station_id), source = "FEMS forecast", date = f$date,
+                    hour = as.integer(f$hour), obs_minute = as.integer(f$obs_minute), stringsAsFactors = FALSE)
+    for (v in HOURLY_VALUE_COLS) t[[v]] <- as.numeric(f[[v]])
+    t <- hourly_add_calendar(t, m$tz)
+    fc <- t[.hourly_key(t$date, t$hour) > last_key, intersect(names(h0), names(t)), drop = FALSE]
+  }
+  rownames(obs) <- NULL; rownames(fc) <- NULL
+  list(obs = obs, fc = fc, fetched_at = now,
+       fc_start = if (nrow(fc)) sprintf("%s %02d:00 LST", format(fc$date[1], "%d %b"), fc$hour[1]) else NA)
+}
+
+hourly_merge_live <- function(st, live) {
+  if (is.null(live) || !nrow(live$obs)) return(st)
+  o <- live$obs
+  for (v in setdiff(names(st$hourly), names(o))) o[[v]] <- NA
+  st$hourly <- rbind(st$hourly, o[, names(st$hourly)])
+  st$source$live <- paste0("topped up from FEMS ", format(live$fetched_at, "%Y-%m-%d %H:%M"))
+  st
+}

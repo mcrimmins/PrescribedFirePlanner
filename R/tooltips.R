@@ -230,3 +230,27 @@ tip_daily_range <- function(q, var, pass = NULL, hours_label = "all hours") {
          if (!is.null(pass)) paste0("<br>Within your limit: <b>", tip_pct(pass), "</b> of ", tip_hours(q$n))
          else paste0("<br>From ", tip_hours(q$n)))
 }
+
+# ---- Season tracker: one tooltip per day (shared by every panel) ------------------------
+# days: totals_season_days(); bands: totals_season_reference()$bands.
+tip_season_days <- function(days, bands, rx_vars, min_run, clock = FALSE) {
+  b <- bands[bands$value == "in_rx", ]; k <- match(days$doy, b$doy)
+  tot <- days$in_rx_obs + days$in_rx_fc
+  part <- ifelse(days$has_fc & days$obs_valid > 0, sprintf(" (%d observed + %d forecast)", days$in_rx_obs, days$in_rx_fc),
+                 ifelse(days$has_fc, " (FEMS forecast)", ""))
+  run <- ifelse(is.na(days$longest) | days$longest == 0, "No hours in prescription",
+                sprintf("Longest run %d h, %02d:00-%02d:00 %s", days$longest, days$start_hour,
+                        (days$start_hour + days$longest) %% 24, if (clock) "clock time" else "LST"))
+  use <- ifelse(days$usable, sprintf(" \u2014 <b>a usable day</b> (%d+ h)", min_run), "")
+  ref <- ifelse(is.na(k), "", sprintf("<br>Typical for the date: %s h (middle half %s-%s h, record %s h)",
+                                      round(b$q50[k]), round(b$q25[k]), round(b$q75[k]), round(b$q100[k])))
+  held <- ifelse(is.na(days$held), "", paste0("<br>Held out most by ", .tip_short[days$held], " alone: ", tip_hours(days$held_h)))
+  lim <- if (length(rx_vars)) paste0("<br>Limit met: ", vapply(seq_len(nrow(days)), function(i)
+    paste(vapply(rx_vars, function(v) paste0(.tip_short[[v]], " ", days[[paste0("pass_", v, "_obs")]][i] + days[[paste0("pass_", v, "_fc")]][i], " h"), ""),
+          collapse = ", "), "")) else ""
+  miss <- ifelse(days$missing > 0, paste0("<br>", tip_hours(days$missing), " not known"), "")
+  paste0("<b>", format(days$date, "%a %d %b %Y"), "</b>",
+         "<br>In prescription: <b>", tot, " h</b>", part,
+         "<br>", run, use, ref, held, lim, miss,
+         "<br><i>Click to open this week on Past event</i>")
+}

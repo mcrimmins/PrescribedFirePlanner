@@ -187,6 +187,36 @@ local({
     .check("G4 ... 22 day labels, 20 Dec first and 10 Jan last", length(attr(w2, "window_days")) == 22 &&
              attr(w2, "window_days")[1] == "20 Dec" && tail(attr(w2, "window_days"), 1) == "10 Jan")
     .check("G5 nothing outside the window is kept", !any(w1$date == as.Date("2008-03-06")) && !any(w2$date == as.Date("2008-12-19")))
+
+    .section("H. Live top-up and FEMS forecast")
+    hl <- hourly_qc(hourly_add_calendar(hourly_from_fems(.fake_wx(seq(as.Date("2026-10-01"), as.Date("2026-10-31"), by = "day"))),
+                                        "America/Phoenix"))
+    sl <- list(meta = hourly_station_meta("21202"), hourly = hl, source = list(type = "bundled", detail = "test"))
+    nowl <- as.POSIXct("2026-11-03 08:40", tz = "America/Phoenix")
+    asked <- NULL
+    fk <- function(id, start, end, verbose = FALSE) {
+      asked <<- c(start, end)
+      d <- .fake_wx(seq(as.Date(start), as.Date(end), by = "day"), station_id = id)
+      k <- as.integer(d$date) * 24 + d$hour; cut <- as.integer(as.Date("2026-11-03")) * 24 + 8
+      d$record_type <- ifelse(k <= cut, "O", "F")
+      d$temperature[d$record_type == "F"] <- 55                     # a forecast "stuck" for days: must NOT be screened
+      d[k <= cut + 7 * 24 + 3, ]
+    }
+    lv <- hourly_live(sl, fetch = fk, now = nowl)
+    .check("H1 asks FEMS from a week before the record's end (screening context) to 8 days ahead",
+           identical(asked, c(as.Date("2026-10-24"), as.Date("2026-11-11"))))
+    .check("H2 observations: only hours after the record, through the latest one (1 Nov 00:00 to 3 Nov 08:00)",
+           nrow(lv$obs) == 2 * 24 + 9 && min(lv$obs$date) == as.Date("2026-11-01") && tail(lv$obs$hour, 1) == 8)
+    .check("H3 forecast: starts the next hour, no overlap with observations", nrow(lv$fc) > 0 &&
+             lv$fc$date[1] == as.Date("2026-11-03") && lv$fc$hour[1] == 9 && lv$fc_start == "03 Nov 09:00 LST")
+    .check("H4 forecast hours are not screened (a 7-day 'stuck' forecast stays)", all(lv$fc$temperature == 55))
+    .check("H5 both come back in the standard table's columns", identical(names(lv$obs), names(hl)) && identical(names(lv$fc), names(hl)))
+    sm <- hourly_merge_live(sl, lv)
+    .check("H6 merging appends the observations only, and notes the top-up",
+           nrow(sm$hourly) == nrow(hl) + nrow(lv$obs) && !anyDuplicated(as.integer(sm$hourly$date) * 24 + sm$hourly$hour) &&
+             grepl("topped up from FEMS", sm$source$live, fixed = TRUE))
+    .check("H7 an empty FEMS reply leaves the station as it was",
+           identical(hourly_merge_live(sl, hourly_live(sl, fetch = function(...) NULL, now = nowl))$hourly, hl))
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))

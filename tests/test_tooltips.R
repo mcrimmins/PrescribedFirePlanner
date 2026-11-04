@@ -135,6 +135,17 @@ local({
            grepl("No hours in prescription", tw[2], fixed = TRUE) && grepl("4 hours not known", tw[2], fixed = TRUE) &&
              !grepl("usable", tw[2], fixed = TRUE), tw[2])
 
+    .section("D4. Season tracker day tooltips")
+    sdd <- data.frame(date = as.Date("2026-11-04"), doy = 308L, in_rx_obs = 0, in_rx_fc = 5, pass_relativeHumidity_obs = 0,
+                      pass_relativeHumidity_fc = 6, obs_valid = 1, fc_valid = 6, missing = 0, has_fc = TRUE, longest = 5L,
+                      start_hour = 11L, usable = TRUE, held = "relativeHumidity", held_h = 1)
+    sbb <- data.frame(doy = 308L, value = "in_rx", n = 40L, q25 = 1, q50 = 3, q75 = 5, q100 = 7)
+    ts <- tip_season_days(sdd, sbb, "relativeHumidity", 4)
+    .check("D4.1 a season day: hours, observed + forecast split, run, typical for the date, click hint",
+           grepl("In prescription: <b>5 h</b> (0 observed + 5 forecast)", ts, fixed = TRUE) &&
+             grepl("Longest run 5 h, 11:00-16:00 LST", ts, fixed = TRUE) && grepl("Typical for the date: 3 h (middle half 1-5 h, record 7 h)", ts, fixed = TRUE) &&
+             grepl("Click to open this week on Past event", ts, fixed = TRUE), ts)
+
     .section("E. Map markers")
     ts <- tip_station("21202", "SAGUARO", 2264, "AZ", featured = TRUE, bundled = TRUE, note = "Sonoran Desert")
     .check("E1 station tooltip: name, id, state, elevation, bundled, note",

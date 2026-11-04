@@ -6,7 +6,8 @@
 # with the prescription range shaded and the failing limit marked, night
 # shaded. Below: hour totals by day (R/totals.R) and two CSVs (daily, hourly).
 # Takes reactives st() (station object) and rx() (prescription). Returns
-# list(dates) -- the chosen range, a reactive.
+# list(dates, set_week): the chosen range (a reactive), and a function that
+# shows the week around a date (used by the Season tracker's clicks).
 # Requires R/constants.R, R/sun.R, R/rx.R, R/climatology.R, R/totals.R,
 # R/tooltips.R, R/plots.R.
 # ==============================================================================
@@ -59,12 +60,23 @@ mod_event_server <- function(id, st, rx) {
     clock <- shiny::reactive(isTRUE(input$clock) && isTRUE(st()$meta$has_dst))
     record <- shiny::reactive({ shiny::req(st()); range(st()$hourly$date) })
 
-    # a new station: the last EVENT_DEFAULT_DAYS days of its record
+    # a new station: the last EVENT_DEFAULT_DAYS days of its record. The same
+    # station with more data (the Season tracker's live top-up): widen the
+    # limits but keep the chosen dates.
+    last_id <- shiny::reactiveVal("")
     shiny::observeEvent(st(), {
-      r <- record()
-      shiny::updateDateRangeInput(session, "dates", start = max(r[1], r[2] - EVENT_DEFAULT_DAYS + 1), end = r[2],
-                                  min = r[1], max = r[2])
+      r <- record(); sid <- st()$meta$station_id
+      if (!identical(sid, last_id())) {
+        shiny::updateDateRangeInput(session, "dates", start = max(r[1], r[2] - EVENT_DEFAULT_DAYS + 1), end = r[2],
+                                    min = r[1], max = r[2])
+        last_id(sid)
+      } else shiny::updateDateRangeInput(session, "dates", min = r[1], max = r[2])
     })
+    # the week around a day (from the Season tracker), clamped to the record
+    set_week <- function(d) {
+      r <- record(); s <- min(max(d - 3, r[1]), r[2] - 6); s <- max(s, r[1])
+      shiny::updateDateRangeInput(session, "dates", start = s, end = min(s + 6, r[2]))
+    }
     shift <- function(sign) {
       d <- input$dates; r <- record(); shiny::req(length(d) == 2, !anyNA(d))
       len <- as.numeric(d[2] - d[1]) + 1
@@ -156,6 +168,6 @@ mod_event_server <- function(id, st, rx) {
     output$csv_hourly <- csv_out("hourly")
 
     # the chosen range, for the Same dates tab's "Use the Past event dates"
-    list(dates = shiny::reactive(input$dates))
+    list(dates = shiny::reactive(input$dates), set_week = set_week)
   })
 }

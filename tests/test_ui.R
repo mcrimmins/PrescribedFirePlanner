@@ -26,7 +26,7 @@ local({
     if (!all(have)) stop("missing packages")
     suppressPackageStartupMessages({ library(shiny); library(bslib) })
     .source_core("A")
-    for (f in c("fems_download", "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same")) {
+    for (f in c("fems_download", "tooltips", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same", "mod_season")) {
       r <- .run(paste("source", f), source(file.path("R", paste0(f, ".R"))))
       .check(paste0("A5 R/", f, ".R loads"), r$ok)
     }
@@ -60,6 +60,8 @@ local({
               "clim-totals_note", "clim-totals_main", "clim-totals_limit", "clim-csv_totals", "clim-csv_years",
               paste0("event-", c("dates", "back", "fwd", "controls", "plot_box", "caption", "totals_main", "totals_limit",
                                  "csv_daily", "csv_hourly")),
+              paste0("season-", c("year", "window", "whole", "refresh", "status", "plot_box", "caption", "totals_note",
+                                  "totals", "csv_days")),
               paste0("same-", c("window", "use_event", "controls", "plot_box", "caption", "totals_note",
                                 "totals_main", "totals_limit", "csv_years", "csv_days")),
               "quality-items", "quality-coverage", "quality-log")
@@ -75,11 +77,11 @@ local({
              length(htmltools::tagQuery(ui)$find("hr.sb-rule")$selectedTags()) == 1)
     dup <- unique(ids[duplicated(ids)])
     .check("B5 no duplicate ids", !length(dup), paste(dup, collapse = ", "))
-    tabs <- c("station", "quality", "climatology", "past", "same", "forecast", "about")
-    .check("B6 all seven tabs are present", all(tabs %in% vals), paste("missing:", paste(setdiff(tabs, vals), collapse = ", ")))
+    tabs <- c("station", "quality", "climatology", "season", "past", "same", "forecast", "about")
+    .check("B6 all eight tabs are present", all(tabs %in% vals), paste("missing:", paste(setdiff(tabs, vals), collapse = ", ")))
     tv <- unique(vals[vals %in% tabs])
-    .check("B6b tab order: Station, Climatology, Past event, Same dates, Forecast, Data quality, About",
-           identical(tv, c("station", "climatology", "past", "same", "forecast", "quality", "about")), paste(tv, collapse = ", "))
+    .check("B6b tab order: Station, Climatology, Season tracker, Past event, Same dates, Forecast, Data quality, About",
+           identical(tv, c("station", "climatology", "season", "past", "same", "forecast", "quality", "about")), paste(tv, collapse = ", "))
     html <- as.character(htmltools::renderTags(ui)$html)
     srcs <- unique(srcs[!startsWith(srcs, "http") & !startsWith(srcs, "data:")])   # from the tag walk, not regex on HTML
     www <- list.files("www")
@@ -255,6 +257,50 @@ local({
         .check("F5 more than 92 days is refused in plain words", grepl("up to 92 days", msg, fixed = TRUE), msg)
         session$setInputs(window = as.Date(c("2001-12-20", "2001-01-10")))
         .check("F6 a window through New Year works (22 days)", length(res()$labels) == 22)
+      })
+    }
+
+    .section("G. Season tracker module (testServer, real station, fake FEMS)")
+    if (nrow(mf)) {
+      now0 <- as.POSIXct(paste(max(st0$hourly$date) + 2, "08:30"), tz = st0$meta$tz)
+      calls <- 0
+      fake <- function(id, start, end, verbose = FALSE, ...) {
+        calls <<- calls + 1
+        d <- .fake_wx(seq(as.Date(start), as.Date(end), by = "day"), station_id = id)
+        k <- as.integer(d$date) * 24 + d$hour; cut <- as.integer(as.Date(format(now0, tz = st0$meta$tz))) * 24 + 8
+        d$record_type <- ifelse(k <= cut, "O", "F"); d[k <= cut + 7 * 24 + 3, ]
+      }
+      rxs <- rx_with_settings(rx0, ignition = c(10, 17), min_window = 4)
+      shiny::testServer(mod_season_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rxs),
+                                                       active = shiny::reactive(TRUE), fetch = fake, now = function() now0), {
+        session$flushReact()
+        .check("G1 opening the tab fetches live data once", calls == 1, paste(calls, "call(s)"))
+        n0 <- nrow(st0$hourly); n1 <- nrow(st_full()$hourly)
+        .check("G2 the latest observations are appended (the day after the record, then today through 08:00)",
+               n1 - n0 == 24 + 9, paste(n1 - n0, "hours added"))
+        y <- format(as.Date(format(now0, tz = st0$meta$tz)), "%Y")
+        session$setInputs(year = y, window = as.Date(c("2001-01-01", "2001-12-31")))
+        d <- days()
+        .check("G3 forecast days follow today: hatched part counted apart from observed",
+               any(d$in_rx_fc > 0) && all(d$in_rx_fc[d$date < as.Date(format(now0, tz = st0$meta$tz))] == 0))
+        pj <- paste(output$plot, collapse = "")
+        .check("G4 the chart renders with observed and forecast bars, the band and the typical year",
+               grepl("FEMS forecast", pj, fixed = TRUE) && grepl("Middle half of years", pj, fixed = TRUE) &&
+                 grepl("Typical year (median)", pj, fixed = TRUE))
+        tb <- paste(output$totals, collapse = "")
+        .check("G5 the season table: this season, forecast, typical year", grepl("Typical year, same dates", tb, fixed = TRUE) &&
+                 grepl("Forecast (next 7 days)", tb, fixed = TRUE))
+        rl <- function(f) { con <- file(f, encoding = "UTF-8-BOM"); on.exit(close(con)); readLines(con, warn = FALSE) }
+        cs <- rl(output$csv_days)
+        .check("G6 the daily CSV downloads with obs/forecast columns and the reference", any(grepl("in_rx_fc", cs, fixed = TRUE)) &&
+                 any(grepl("ref_median", cs, fixed = TRUE)))
+        session$setInputs(year = as.character(as.integer(y) - 3))
+        .check("G7 a past year has no forecast", all(days()$in_rx_fc == 0))
+        session$setInputs(window = as.Date(c("2001-10-01", "2001-03-01")))
+        msg <- tryCatch({ win(); "" }, error = function(e) conditionMessage(e))
+        .check("G8 a window through New Year is refused in plain words", grepl("within one calendar year", msg, fixed = TRUE), msg)
+        session$setInputs(refresh = 1)
+        .check("G9 Refresh fetches again", calls == 2)
       })
     }
   }, error = function(e) {

@@ -367,3 +367,157 @@ totals_window_csv_lines <- function(w, meta, source_detail, rx, window_label, mi
   }
   c(hdr, .totals_csv_body(d))
 }
+
+# ---- Season tracker ----------------------------------------------------------------------
+# Daily counts for one year (observed and forecast kept apart), the 2005-2025
+# reference by day of year, and the season-to-date comparison. Counts use only
+# the ignition period: filter with rx_in_ignition() first.
+#
+#   totals_season_days(flagged, rx_vars, min_run, hour_col)
+#     flagged: rx_flag() rows for the year, with column `part` ("observed" or
+#     "forecast"; not "kind", which clim_summarise() uses for its own output). One row per date: <measure>_obs and <measure>_fc hour
+#     counts for in_rx and pass_<var>, obs_valid, fc_valid, missing, longest
+#     (run across observed and forecast hours together), start_hour, usable,
+#     held (the limit that alone held out the most hours) and held_h.
+.season_measures <- function(rx_vars) c("in_rx", paste0("pass_", rx_vars))
+
+totals_season_days <- function(flagged, rx_vars, min_run = SAME_MIN_RUN_H, hour_col = "hour") {
+  vals <- c(.season_measures(rx_vars), paste0("only_", rx_vars)); vals <- vals[vals %in% names(flagged)]
+  dates <- sort(unique(flagged$date))
+  out <- data.frame(date = dates, stringsAsFactors = FALSE)
+  if (!nrow(flagged)) return(out)
+  dl <- clim_summarise(flagged, vals, by = c("date", "part"))
+  pick <- function(v, k, col = "n_true") {
+    r <- dl[dl$value == v & dl$part == k, ]
+    x <- r[[col]][match(dates, r$date)]; ifelse(is.na(x), 0, x)
+  }
+  for (v in .season_measures(rx_vars)) {
+    out[[paste0(v, "_obs")]] <- pick(v, "observed"); out[[paste0(v, "_fc")]] <- pick(v, "forecast")
+  }
+  out$obs_valid <- pick("in_rx", "observed", "n_valid"); out$fc_valid <- pick("in_rx", "forecast", "n_valid")
+  out$missing <- pick("in_rx", "observed", "n_missing") + pick("in_rx", "forecast", "n_missing")
+  out$has_fc <- out$fc_valid > 0
+  runs <- clim_runs(flagged, "in_rx", by = "date", hour_col = hour_col)
+  k <- match(dates, runs$date)
+  out$longest <- runs$longest[k]; out$start_hour <- runs$start_hour[k]
+  out$usable <- out$longest >= min_run
+  out$held <- NA_character_; out$held_h <- NA_real_
+  if (length(rx_vars)) {
+    oh <- vapply(rx_vars, function(v) pick(paste0("only_", v), "observed") + pick(paste0("only_", v), "forecast"),
+                 numeric(length(dates)))
+    if (is.null(dim(oh))) oh <- matrix(oh, ncol = length(rx_vars))
+    w <- max.col(oh, ties.method = "first"); top <- oh[cbind(seq_along(dates), w)]
+    out$held <- ifelse(top > 0, rx_vars[w], NA_character_); out$held_h <- ifelse(top > 0, top, NA_real_)
+  }
+  out$doy <- as.integer(format(as.Date(format(dates, "2001-%m-%d"), optional = TRUE), "%j"))
+  out$doy[is.na(out$doy)] <- 59L                     # 29 Feb reads as 28 Feb
+  out
+}
+
+#   totals_season_reference(flagged, rx_vars, min_run)
+#     flagged: rx_flag() baseline rows (ignition hours only). Daily counts per
+#     year and date for each measure, kept only when at least
+#     TOTALS_COVERAGE_MIN % of the day's hours are usable; plus "usable"
+#     (1 when the day has a run of min_run+ hours). Returns list(daily, bands):
+#     daily = year, date, doy, value, n_true; bands = clim_quantiles() of the
+#     daily counts (+/- CLIM_SMOOTH_DAYS): doy, value, q25, q50, q75, q100 (max).
+.season_doy <- function(d) {
+  x <- as.integer(format(as.Date(format(d, "2001-%m-%d"), optional = TRUE), "%j"))
+  x[is.na(x)] <- 59L                                  # 29 Feb reads as 28 Feb
+  x
+}
+
+totals_season_reference <- function(flagged, rx_vars, min_run = SAME_MIN_RUN_H, hour_col = "hour") {
+  vals <- .season_measures(rx_vars); vals <- vals[vals %in% names(flagged)]
+  dl <- clim_summarise(flagged, vals, by = c("year", "date"))
+  ir <- dl[dl$value == "in_rx", ]
+  ok_dates <- ir$date[100 * ir$n_valid / (ir$n_valid + ir$n_missing) >= TOTALS_COVERAGE_MIN]
+  dl <- dl[dl$date %in% ok_dates, ]                   # a day counts for every measure or none
+  ru <- clim_runs(flagged[flagged$date %in% ok_dates, ], "in_rx", by = c("year", "date"), hour_col = hour_col)
+  daily <- rbind(dl[, c("year", "date", "value", "n_true")],
+                 data.frame(year = ru$year, date = ru$date, value = "usable", n_true = as.numeric(ru$longest >= min_run)))
+  daily$doy <- .season_doy(daily$date)
+  bands <- do.call(rbind, lapply(vals, function(v) {
+    d <- daily[daily$value == v, ]
+    q <- clim_quantiles(d, "n_true", probs = c(0.25, 0.5, 0.75, 1))
+    q$value <- v; q
+  }))
+  list(daily = daily, bands = bands)
+}
+
+#   totals_season_summary(days, ref, rx_vars, start, end, asof)
+#     Season to date. Window = the month-days start..end within one calendar
+#     year (start <= end; the tracker shows calendar years). This year: observed hours up to `asof` (today, or the window's
+#     end for a past year) and, separately, the forecast. Reference years: the
+#     same window up to the same point (typical year = median; lowest and
+#     highest named). Years with under TOTALS_COVERAGE_MIN % of those days
+#     usable are left out.
+.season_md <- function(d) as.integer(format(d, "%m%d"))
+.season_pos <- function(d, start) {
+  r <- as.Date(format(d, "2001-%m-%d"), optional = TRUE); r[is.na(r)] <- as.Date("2001-02-28")
+  r0 <- as.Date(format(start, "2001-%m-%d"))
+  p <- as.integer(r - r0); p[p < 0] <- p[p < 0] + 365L
+  p
+}
+
+totals_season_summary <- function(days, ref, rx_vars, start, end, asof, min_run = SAME_MIN_RUN_H) {
+  L <- .season_pos(end, start)                         # last position in the window
+  pa <- .season_pos(asof, start)
+  upto <- if (pa <= L) pa else L                       # how far into the window we are
+  this <- days[.season_pos(days$date, start) <= L, ]
+  obs <- this[.season_pos(this$date, start) <= upto & this$date <= asof, ]
+  obs_day <- obs[!obs$has_fc, ]                       # a day with forecast hours counts as forecast
+  if (.season_md(start) > .season_md(end)) stop("the season window must not wrap through New Year", call. = FALSE)
+  rd <- ref$daily[.season_md(ref$daily$date) >= .season_md(start) & .season_pos(ref$daily$date, start) <= upto, ]
+  rd$wyear <- as.integer(format(rd$date, "%Y"))
+  nd <- tapply(rd$date[rd$value == "in_rx"], rd$wyear[rd$value == "in_rx"], function(x) length(unique(x)))
+  full <- names(nd)[nd >= (upto + 1) * TOTALS_COVERAGE_MIN / 100]
+  per_year <- function(v) { d <- rd[rd$value == v, ]; tapply(d$n_true, d$wyear, sum) }
+  row <- function(label, this_v, fc_v, refvals) {
+    rv <- refvals[names(refvals) %in% full]
+    data.frame(measure = label, this = this_v, forecast = fc_v,
+               median = if (length(rv)) stats::median(rv) else NA_real_,
+               low = if (length(rv)) min(rv) else NA_real_,
+               low_year = if (length(rv)) as.integer(names(rv)[which.min(rv)]) else NA_integer_,
+               high = if (length(rv)) max(rv) else NA_real_,
+               high_year = if (length(rv)) as.integer(names(rv)[which.max(rv)]) else NA_integer_,
+               years = length(rv), stringsAsFactors = FALSE)
+  }
+  out <- rbind(row("In prescription (h)", sum(obs$in_rx_obs), sum(this$in_rx_fc), per_year("in_rx")),
+               row(sprintf("Usable days (%d+ h run)", min_run), sum(obs_day$usable), sum(this$usable[this$has_fc]),
+                   per_year("usable")))
+  for (v in rx_vars) {
+    m <- paste0("pass_", v)
+    out <- rbind(out, row(paste0(RX_VARS$label[RX_VARS$var == v], ": limit met (h)"),
+                          sum(obs[[paste0(m, "_obs")]]), sum(this[[paste0(m, "_fc")]]), per_year(m)))
+  }
+  attr(out, "through") <- as.Date("2001-01-01") + .season_doy(start) - 1 + upto
+  out
+}
+
+# Display: one row per measure; "This season" and "Forecast (next 7 days)" columns.
+totals_season_display <- function(sm) {
+  f <- function(x, y) ifelse(is.na(x), "", sprintf("%s (%d)", .totals_h(x), y))
+  d <- data.frame(sm$measure, .totals_h(sm$this), ifelse(sm$forecast > 0, paste0("+", .totals_h(sm$forecast)), ""),
+                  .totals_h(sm$median), f(sm$low, sm$low_year), f(sm$high, sm$high_year), sm$years, stringsAsFactors = FALSE)
+  names(d) <- c("", "This season (observed)", "Forecast (next 7 days)", "Typical year, same dates",
+                "Lowest", "Highest", "Years")
+  d
+}
+
+# CSV: one row per day of the selected year.
+totals_season_csv_lines <- function(days, bands, meta, source_detail, rx, year, hour_label, fc_note) {
+  hdr <- .totals_csv_header(paste0("season tracker, hours per day, ", year), meta, source_detail, rx,
+                            paste0("Year: ", year, "; reference years ", min(RX_BASELINE_YEARS), "-", max(RX_BASELINE_YEARS)),
+                            hour_label,
+                            c("*_obs = observed hours, *_fc = FEMS forecast hours (never added to observed totals).",
+                              paste0("ref_* = reference daily hours in prescription by day of year (+/-", CLIM_SMOOTH_DAYS,
+                                     " days): median, 25th and 75th percentiles, record max."),
+                              if (!is.na(fc_note)) fc_note))
+  b <- bands[bands$value == "in_rx", ]; k <- match(days$doy, b$doy)
+  d <- days[, setdiff(names(days), c("doy"))]
+  d$date <- format(d$date, "%Y-%m-%d")
+  d$held <- RX_VARS$label[match(d$held, RX_VARS$var)]
+  d$ref_median <- b$q50[k]; d$ref_q25 <- b$q25[k]; d$ref_q75 <- b$q75[k]; d$ref_max <- b$q100[k]
+  c(hdr, .totals_csv_body(d))
+}

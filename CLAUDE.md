@@ -48,7 +48,8 @@ burn prescription. Owner: Mike Crimmins (University of Arizona). GitHub: `mcrimm
 - Request **one station at a time** with local station time. Never batch stations into one request.
 - `date`/`hour` come from `display_hour_lst` by `substr()`. Never parse it into POSIXct or convert time zones.
 - Always send `sortBy: "observation_time", sortOrder: "asc"` when paging.
-- Use observed records only (`record_type == "O"`). `vapor_press_def` is in Pa; `station_id` must be character.
+- Use observed records only (`record_type == "O"`), except the Season tracker's forecast: FEMS type "F" records
+  (hourly, ~7 days ahead) come in only through `hourly_live()` and are kept apart from observations. `vapor_press_def` is in Pa; `station_id` must be character.
 - **Weather window (fixed 2026-11-02):** `weatherObs` takes UTC bounds, so the request is padded one day each side and trimmed
   to local dates. Before the fix the last local day lost 17:00–23:00. Smoke test checks C7/C8/E5 guard it; don't remove the padding.
 - Cache downloads in `reactiveValues` for the session only; never on disk.

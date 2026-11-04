@@ -16,7 +16,7 @@ library(bslib)
 
 # Fixed order; every file namespaces its other packages (CLAUDE.md).
 for (f in c("constants", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
-            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same")) {
+            "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same", "mod_season")) {
   source(file.path("R", paste0(f, ".R")))
 }
 
@@ -79,6 +79,7 @@ ui <- page_navbar(
     mod_rx_ui("rx")),
   nav_panel("Station", value = "station", mod_station_map_ui("station")),
   nav_panel("Climatology", value = "climatology", mod_climatology_ui("clim")),
+  nav_panel("Season tracker", value = "season", mod_season_ui("season")),
   nav_panel("Past event", value = "past", mod_event_ui("event")),
   nav_panel("Same dates", value = "same", mod_same_ui("same")),
   nav_panel("Forecast", value = "forecast",
@@ -109,8 +110,15 @@ server <- function(input, output, session) {
   rx <- mod_rx_server("rx")
   mod_quality_server("quality", station$st)
   mod_climatology_server("clim", station$st, rx)
-  event <- mod_event_server("event", station$st, rx)
-  mod_same_server("same", station$st, rx, event$dates)
+  # the Season tracker tops up the record with the latest FEMS observations;
+  # Past event and Same dates use that fuller record
+  season <- mod_season_server("season", station$st, rx, active = reactive(identical(input$main_nav, "season")))
+  event <- mod_event_server("event", season$st_full, rx)
+  mod_same_server("same", season$st_full, rx, event$dates)
+  observeEvent(season$goto(), {
+    event$set_week(season$goto()$date)
+    nav_select("main_nav", "past")
+  })
 
   # after a station loads, go to Climatology; the badge opens Data quality
   observeEvent(station$st(), {

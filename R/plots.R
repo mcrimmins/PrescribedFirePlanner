@@ -361,3 +361,81 @@ plot_daily_range <- function(q, var, lo = NA, hi = NA, text = NULL, band = CHART
                                                                     "zoomIn2d", "zoomOut2d", "resetScale2d"),
                    toImageButtonOptions = list(format = "png", filename = paste0("rx_", var, "_daily_range"), scale = 2))
 }
+
+# ---- Season tracker: daily hours, stacked panels ------------------------------------------
+# days: totals_season_days() with `text` (tip_season_days); bands: the reference
+# (doy, value, q25, q50, q75, q100). measures: "in_rx" then "pass_<var>" per limit.
+# Bars: observed (blue) and FEMS forecast (hatched), stacked for today; usable
+# days get an orange tick above the bar. Behind: reference middle half (band),
+# typical year (line), record (dotted). xrange: the dates shown first. Clicks
+# are reported on plotly source "season".
+plot_season <- function(days, bands, measures, titles, xrange, today = NULL, ymax = 24, year = NULL) {
+  k <- length(measures)
+  units <- c(1.6, rep(1, k - 1)); gap <- 0.06
+  tot <- sum(units) + gap * (k - 1)
+  top <- 1 - c(0, cumsum(units + gap))[seq_len(k)] / tot
+  bottom <- top - units / tot
+  # three y axes per panel, drawn in order: the band (base), the bars (overlaid
+  # on it), and the reference lines (overlaid on the bars). plotly draws bars
+  # under any filled scatter on the same axes, so the band needs its own axis
+  # to sit behind them.
+  ax <- function(i, layer) i + (layer - 1) * k
+  yname <- function(n) if (n == 1) "y" else paste0("y", n)
+  ylay  <- function(n) if (n == 1) "yaxis" else paste0("yaxis", n)
+  x <- format(days$date, "%Y-%m-%d")
+  ref_x <- format(as.Date(sprintf("%d-01-01", year)) + seq_len(365 + (year %% 4 == 0)) - 1, "%Y-%m-%d")
+  ref_doy <- {
+    r <- as.Date(ref_x); d <- as.integer(format(as.Date(format(r, "2001-%m-%d"), optional = TRUE), "%j")); d[is.na(d)] <- 59L; d
+  }
+  p <- plotly::plot_ly(source = "season")
+  lay <- list(); shapes <- list(); ann <- list()
+  for (i in seq_len(k)) {
+    m <- measures[i]
+    b <- bands[bands$value == m, ]; j <- match(ref_doy, b$doy)
+    rng <- c(0, ymax * (if (i == 1) 1.12 else 1.02))
+    p <- plotly::add_ribbons(p, x = ref_x, ymin = b$q25[j], ymax = b$q75[j], yaxis = yname(ax(i, 1)),
+                             fillcolor = "rgba(120,130,140,0.22)", line = list(width = 0), hoverinfo = "skip",
+                             name = "Middle half of years", legendgroup = "band", showlegend = i == 1)
+    obs <- days[[paste0(m, "_obs")]]; fc <- days[[paste0(m, "_fc")]]
+    p <- plotly::add_bars(p, x = x, y = obs, yaxis = yname(ax(i, 2)), text = days$text, hoverinfo = "text", textposition = "none",
+                          marker = list(color = CHART_IN_RX), name = "Observed", legendgroup = "obs", showlegend = i == 1)
+    if (any(fc > 0))
+      p <- plotly::add_bars(p, x = x, y = fc, yaxis = yname(ax(i, 2)), text = days$text, hoverinfo = "text", textposition = "none",
+                            marker = list(color = "rgba(11,94,128,0.25)", line = list(color = CHART_IN_RX, width = 1),
+                                          pattern = list(shape = "/", fgcolor = CHART_IN_RX, size = 5, solidity = 0.3)),
+                            name = "FEMS forecast", legendgroup = "fc", showlegend = i == 1)
+    if (i == 1 && any(days$usable)) {
+      u <- days$usable
+      p <- plotly::add_markers(p, x = x[u], y = (obs + fc)[u] + ymax * 0.05, yaxis = yname(ax(i, 2)), text = days$text[u],
+                               hoverinfo = "text", marker = list(symbol = "triangle-down", size = 6, color = CHART_HIGHLIGHT),
+                               name = "Usable day", showlegend = TRUE)
+    }
+    p <- plotly::add_lines(p, x = ref_x, y = b$q100[j], yaxis = yname(ax(i, 3)), line = list(color = "#8a949c", width = 1, dash = "dot"),
+                           hoverinfo = "skip", name = "Record (2005-2025)", legendgroup = "max", showlegend = i == 1)
+    p <- plotly::add_lines(p, x = ref_x, y = b$q50[j], yaxis = yname(ax(i, 3)), line = list(color = "#333333", width = 1.6),
+                           hoverinfo = "skip", name = "Typical year (median)", legendgroup = "med", showlegend = i == 1)
+    lay[[ylay(ax(i, 1))]] <- .plot_axis(domain = c(bottom[i], top[i]), range = rng,
+                                        title = list(text = titles[i], font = list(size = 11, color = "#555555")),
+                                        showgrid = TRUE, gridcolor = "#eeeeee", fixedrange = TRUE)
+    for (l in 2:3) lay[[ylay(ax(i, l))]] <- list(overlaying = yname(ax(i, 1)), range = rng, visible = FALSE, fixedrange = TRUE)
+  }
+  if (!is.null(today)) {
+    shapes <- list(list(type = "line", xref = "x", yref = "paper", x0 = format(today), x1 = format(today), y0 = 0, y1 = 1,
+                        line = list(color = "#444444", width = 1, dash = "dash")))
+    ann <- list(list(x = format(today), y = 1, xref = "x", yref = "paper", text = "today", showarrow = FALSE,
+                     yanchor = "bottom", font = list(size = 11, color = "#444444")))
+  }
+  lay$xaxis <- .plot_axis(type = "date", range = format(xrange), fixedrange = FALSE, showgrid = TRUE, gridcolor = "#eeeeee",
+                          tickformat = "%d %b", anchor = yname(ax(k, 1)))
+  lay$barmode <- "stack"; lay$bargap <- 0.15
+  lay$shapes <- shapes; lay$annotations <- ann
+  lay$hovermode <- "closest"; lay$dragmode <- "zoom"
+  lay$legend <- list(orientation = "h", x = 0, y = -0.03, yanchor = "top", font = list(size = 11))
+  lay$margin <- list(l = 70, r = 20, t = 30, b = 40)
+  lay$plot_bgcolor <- "rgba(0,0,0,0)"; lay$paper_bgcolor <- "rgba(0,0,0,0)"
+  lay$hoverlabel <- list(bgcolor = "white", bordercolor = "#cccccc", font = list(size = 13, color = "#222222"), align = "left")
+  p <- do.call(plotly::layout, c(list(p), lay))
+  p <- plotly::event_register(p, "plotly_click")
+  plotly::config(p, displaylogo = FALSE, modeBarButtonsToRemove = c("select2d", "lasso2d", "autoScale2d"),
+                 toImageButtonOptions = list(format = "png", filename = "rx_season", scale = 2))
+}

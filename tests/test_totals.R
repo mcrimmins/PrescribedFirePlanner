@@ -183,6 +183,37 @@ local({
            nrow(bd) == 20 && all(c("usable_day", "longest_run_h", "held_out_most_by") %in% names(bd)) &&
              "usable_days" %in% bw$measure && any(grepl("Window: 01 Mar to 10 Mar", lw, fixed = TRUE)) &&
              any(grepl("at least 4 consecutive hours", lw, fixed = TRUE)))
+
+    .section("H. Season tracker")
+    hs <- hourly_add_calendar(hourly_from_fems(.fake_wx(seq(as.Date("2005-01-01"), as.Date("2007-12-31"), by = "day"))), "America/Phoenix")
+    rxs <- rx_new(temperature = c(NA, 80), relativeHumidity = c(25, NA)); vs <- rx_constrained(rxs)
+    y <- hs[hs$year == 2007, ]; y$part <- ifelse(y$date > as.Date("2007-06-10") | (y$date == as.Date("2007-06-10") & y$hour > 8),
+                                                 "forecast", "observed")
+    fy <- rx_flag(y, rxs)
+    sd <- totals_season_days(fy, vs, min_run = 4)
+    .check("H1 one row per day of the year, with observed and forecast hours kept apart",
+           nrow(sd) == 365 && all(sd$in_rx_fc[sd$date < as.Date("2007-06-10")] == 0) && all(sd$in_rx_obs[sd$date > as.Date("2007-06-10")] == 0))
+    t10 <- sd[sd$date == as.Date("2007-06-10"), ]
+    .check("H2 the split day adds up: observed + forecast = that day's hours in prescription",
+           t10$in_rx_obs + t10$in_rx_fc == sum(fy$in_rx[fy$date == as.Date("2007-06-10")], na.rm = TRUE) && t10$has_fc)
+    rf <- totals_season_reference(rx_flag(hs[hs$year <= 2006, ], rxs), vs, min_run = 4)
+    .check("H3 the reference has a band for each measure on every day of the year",
+           all(c("in_rx", "pass_temperature", "pass_relativeHumidity") %in% rf$bands$value) &&
+             nrow(rf$bands[rf$bands$value == "in_rx", ]) == 365 && all(c("q25", "q50", "q75", "q100") %in% names(rf$bands)))
+    .check("H4 ... and usable-day flags per reference day", all(rf$daily$n_true[rf$daily$value == "usable"] %in% c(0, 1)))
+    ss <- totals_season_summary(sd, rf, vs, as.Date("2007-03-01"), as.Date("2007-08-31"), as.Date("2007-06-10"), min_run = 4)
+    .check("H5 season so far: observed hours 1 Mar to 10 Jun, the forecast after, reference years over the same dates",
+           ss$this[1] == sum(sd$in_rx_obs[sd$date >= as.Date("2007-03-01") & sd$date <= as.Date("2007-06-10")]) &&
+             ss$forecast[1] == sum(sd$in_rx_fc[sd$date <= as.Date("2007-08-31")]) && ss$years[1] == 2 &&
+             format(attr(ss, "through"), "%m-%d") == "06-10")
+    .check("H6 a wrapping window is refused", inherits(tryCatch(totals_season_summary(sd, rf, vs, as.Date("2007-10-01"),
+                                                     as.Date("2007-03-01"), as.Date("2007-06-10")), error = identity), "error"))
+    lsn <- totals_season_csv_lines(sd, rf$bands, meta, "test data", rxs, 2007, "LST", "FEMS forecast fetched now")
+    bsn <- utils::read.csv(textConnection(lsn), comment.char = "#")
+    .check("H7 the daily CSV reads back: 365 days, obs/forecast columns, reference columns",
+           nrow(bsn) == 365 && all(c("in_rx_obs", "in_rx_fc", "usable", "ref_median", "ref_max") %in% names(bsn)))
+    .check("H8 display table: one row per measure with typical year, lowest and highest",
+           nrow(totals_season_display(ss)) == 2 + length(vs) && "Typical year, same dates" %in% names(totals_season_display(ss)))
   }, error = function(e) {
     .T$abort <- paste("test aborted:", conditionMessage(e))
     .say(""); .say("ABORTED: ", conditionMessage(e))
