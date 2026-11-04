@@ -179,6 +179,28 @@ using the same wording, units and time label ("LST", or the clock-time zone when
 - **PDF summary (exploratory):** a one-page report with station, prescription, climatology heatmap and window table.
   Kept in v1 only if it works on Connect without LaTeX or headless Chrome.
 
+## Colour (decided and built 4 Nov 2026, from partner feedback)
+The co-designing trainer is hue intolerant ("all I see is a very fuzzy line"). For them only **lightness** carries
+detail, so every encoding must work in greyscale. Checked with simulations (`palette_contrast2.png`).
+- **Heatmaps** (day of year, month × hour, by variable): warm below the outline threshold, blue above it, with
+  **lightness always darkening from 0% (light peach) to 100% (deep navy)**, so the order survives without hue.
+  - Warm side `#fff4de #f8d3a3 #eda766 #d9782f` (L* 97 to 60); blue side `#5290b5 #3a7fa6 #0b5e80 #073a55 #041f30`
+    (L* 57 to 11). The blue end matches the site colour.
+  - Drawn in **10% steps**, with the threshold always a step edge. Crisp bands replace the "fuzz" and keep detail
+    inside the window (30-40% vs 40-50%).
+  - The colour bar is labelled 0%, the threshold and 100%. The split stays at the slider value when the outline is off.
+  - Rejected: red-cream-blue centred on the threshold. It has the strongest hue contrast, but 0% and 100% are both
+    dark, so without hue far-below and far-above look the same.
+- **Same dates** uses the same ramp and steps for hours per day, split at the minimum usable window.
+- **Lines on the heatmaps:** the threshold contour is black with a white halo. Sunrise and sunset are white with a
+  charcoal halo, and twilight is dotted the same way. The ignition period is black dashed with a white halo, so it
+  shows on the dark navy. plotly has no halo, so each line is drawn twice (a wider line underneath).
+- **Line and bar charts, shape as well as colour:**
+  - Past event: a failed limit is an **x** marker in the ramp's red-orange (`#d9782f`); in-prescription points are
+    site-blue dots; others are grey dots.
+  - Season tracker: forecast bars stay hatched, and usable days stay triangles, now in the same red-orange.
+  - In-prescription bars (site blue, L* 37) and out-of-prescription grey (L* 81) already differ strongly in lightness.
+
 ## Data sources
 - **FEMS GraphQL API**, using the copied `R/fems_api.R` and `R/fems_download.R`. v1 fetches the **weather feed only**;
   the NFDRS fetch stays in the download layer for when those variables come in.

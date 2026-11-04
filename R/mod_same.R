@@ -100,7 +100,8 @@ mod_same_server <- function(id, st, rx, event_dates = shiny::reactive(NULL)) {
       plotly::plotlyOutput(ns("plot"), height = paste0(max(260, 60 + 22 * ny), "px"))
     })
     output$plot <- plotly::renderPlotly(plot_year_day(res()$tw$days, res()$labels,
-                                                      zmax = if (is.null(res()$ign)) 24 else diff(res()$ign)))
+                                                      zmax = if (is.null(res()$ign)) 24 else diff(res()$ign),
+                                                      split = min_run()))
     output$caption <- shiny::renderUI({
       r <- res(); s <- r$tw$summary
       ir <- s[s$value == "in_rx", ]; ud <- s[s$value == "usable_days", ]

@@ -3,9 +3,11 @@
 #
 # Each function takes summaries (clim_summarise / quality_* output) plus
 # tooltip text from R/tooltips.R, and returns a plotly widget.
-# Colour: one sequential ramp (CHART_SEQ, chosen by CHART_RAMP), always 0-100%,
-# so a colour means the same share for every prescription and station. 2 px gaps
-# between cells; tooltips on every cell; recessive axes.
+# Colour: prescription heatmaps use .rx_scale() -- warm below the threshold,
+# blue above, always darker as the share rises, in steps (docs/SPEC.md
+# "Colour"); lines over them are haloed (.plot_halo_line / _contour). The data
+# quality grid keeps the single-hue CHART_SEQ. 2 px gaps between cells;
+# tooltips on every cell; recessive axes.
 # Requires R/constants.R; uses plotly (namespaced, never attached).
 # ==============================================================================
 
@@ -20,14 +22,56 @@
                     list(...))
 }
 
+# ---- prescription colour scale and haloed lines (docs/SPEC.md "Colour") ---------------------
+# A stepped warm/cool colourscale from 0 to zmax, split at `split`: warm below,
+# blue above, always darker as the value rises; one colour per step, and the
+# split is always a step edge. Returns list(colorscale, tickvals, ticktext).
+.rx_scale <- function(split, zmax = 100, step = CHART_RX_STEP, unit = "%", split_label = "threshold") {
+  split <- min(max(split, 0), zmax)
+  br <- sort(unique(c(seq(0, zmax, by = step), split, zmax)))
+  cw <- grDevices::colorRamp(CHART_RX_WARM); cc <- grDevices::colorRamp(CHART_RX_COOL)
+  col_at <- function(z) {
+    v <- if (z < split) cw(if (split > 0) z / split else 0) else cc(if (zmax > split) (z - split) / (zmax - split) else 1)
+    grDevices::rgb(v[1], v[2], v[3], maxColorValue = 255)
+  }
+  cs <- list()
+  for (k in seq_len(length(br) - 1)) {
+    col <- col_at((br[k] + br[k + 1]) / 2)
+    cs <- c(cs, list(list(br[k] / zmax, col), list(br[k + 1] / zmax, col)))
+  }
+  lab <- paste0(format(br, trim = TRUE), unit)
+  lab[br == split] <- paste0("<b>", lab[br == split], " ", split_label, "</b>")
+  list(colorscale = cs, tickvals = br, ticktext = lab, colour_at = col_at)
+}
+
+# A line drawn twice: a wider halo underneath, so it shows on light and dark cells.
+# legend = "line" puts the visible line in the legend; "halo" the wider one underneath (for white lines,
+# which would vanish on the white legend).
+.plot_halo_line <- function(p, x, y, color = CHART_LINE, halo = CHART_LINE_HALO, width = 1.4, dash = "solid",
+                            name = NULL, showlegend = FALSE, legend = "line", ...) {
+  p <- plotly::add_lines(p, x = x, y = y, line = list(color = halo, width = width + 2.4), hoverinfo = "skip",
+                         name = name, showlegend = showlegend && legend == "halo", ...)
+  plotly::add_lines(p, x = x, y = y, line = list(color = color, width = width, dash = dash), hoverinfo = "skip",
+                    name = name, showlegend = showlegend && legend == "line", ...)
+}
+.plot_halo_contour <- function(p, x, y, z, level, width = 2.2) {
+  for (w in list(list(CHART_LINE_HALO, width + 2.4), list(CHART_LINE, width)))
+    p <- plotly::add_contour(p, x = x, y = y, z = z, hoverinfo = "skip", showscale = FALSE, showlegend = FALSE,
+                             contours = list(start = level, end = level, size = 1, coloring = "none"),
+                             line = list(color = w[[1]], width = w[[2]]))
+  p
+}
+.rx_colorbar <- function(sc, title) list(title = list(text = title, font = list(size = 12)), tickvals = sc$tickvals,
+                                         ticktext = sc$ticktext, len = 0.9, outlinewidth = 0, thickness = 14)
+
 # Month x hour heatmap of a share (0-1). `cells` has the month and hour column,
 # `stat` (share), and `text` (from tip_cells). Hours run top to bottom like a
 # timetable: midnight at the top, late evening at the bottom.
 # `threshold` (0-100, or NA for none): cells at or above it get an outline in
-# `highlight`, so the window shows by outline as well as by colour.
+# black (white-haloed) outline, so the window shows by line as well as by colour.
 plot_hour_heatmap <- function(cells, hour_col = "hour", x_col = "month", clock = FALSE,
                               colorbar_title = "% of hours<br>in prescription",
-                              threshold = NA, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT, outside = NULL) {
+                              threshold = NA, split = if (is.na(threshold)) CLIM_HIGHLIGHT_PCT else threshold, ign = NULL) {
   xs <- sort(unique(cells[[x_col]])); hs <- 0:23
   z <- matrix(NA_real_, nrow = 24, ncol = length(xs)); tx <- matrix("", nrow = 24, ncol = length(xs))
   i <- match(cells[[hour_col]], hs); j <- match(cells[[x_col]], xs)
@@ -35,29 +79,33 @@ plot_hour_heatmap <- function(cells, hour_col = "hour", x_col = "month", clock =
   tx[cbind(i, j)] <- cells$text
   xlab <- if (x_col == "month") month.abb[xs] else as.character(xs)
   shapes <- list()
+  # outline cells at or above the threshold: black over a white halo
   if (!is.na(threshold)) {
     hit <- which(!is.na(z) & z >= threshold, arr.ind = TRUE)
-    shapes <- lapply(seq_len(nrow(hit)), function(k) {
+    rect <- function(k, col, w) {
       r <- hit[k, 1] - 1; cc <- hit[k, 2] - 1          # 0-based category positions
       list(type = "rect", xref = "x", yref = "y", x0 = cc - 0.5, x1 = cc + 0.5, y0 = r - 0.5, y1 = r + 0.5,
-           line = list(color = highlight, width = 2.5), fillcolor = "rgba(0,0,0,0)", layer = "above")
-    })
+           line = list(color = col, width = w), fillcolor = "rgba(0,0,0,0)", layer = "above")
+    }
+    shapes <- c(lapply(seq_len(nrow(hit)), rect, col = CHART_LINE_HALO, w = 4),
+                lapply(seq_len(nrow(hit)), rect, col = CHART_LINE, w = 1.8))
   }
-  # `outside`: data frame of x and hour (same columns as cells) for cells outside the
-  # ignition period; they are washed out so the ignition hours stand out
-  if (!is.null(outside) && nrow(outside)) {
-    oi <- match(outside[[hour_col]], hs) - 1; oj <- match(outside[[x_col]], xs) - 1
-    shapes <- c(lapply(which(!is.na(oi) & !is.na(oj)), function(k)
-      list(type = "rect", xref = "x", yref = "y", x0 = oj[k] - 0.5, x1 = oj[k] + 0.5, y0 = oi[k] - 0.5, y1 = oi[k] + 0.5,
-           line = list(width = 0), fillcolor = CHART_OUTSIDE_IGN, layer = "above")), shapes)
+  # `ign`: data frame of x (same column as cells), start, end in the chart's hours: the
+  # ignition period as dashed lines across each column (a wash would read as "fewer hours")
+  if (!is.null(ign) && nrow(ign)) {
+    seg <- function(jx, yv, col, w, dash) list(type = "line", xref = "x", yref = "y", x0 = jx - 0.5, x1 = jx + 0.5,
+                                               y0 = yv - 0.5, y1 = yv - 0.5, line = list(color = col, width = w, dash = dash),
+                                               layer = "above")
+    jj <- match(ign[[x_col]], xs) - 1
+    for (k in which(!is.na(jj))) for (yv in c(ign$start[k], ign$end[k]))
+      shapes <- c(shapes, list(seg(jj[k], yv, CHART_LINE_HALO, 4, "solid"), seg(jj[k], yv, CHART_LINE, 1.6, "dash")))
   }
+  sc <- .rx_scale(split)
   plotly::plot_ly(x = xlab, y = sprintf("%02d:00", hs), z = z, text = tx, type = "heatmap",
-                  colorscale = .plot_colorscale(colors), zmin = 0, zmax = 100,
+                  colorscale = sc$colorscale, zmin = 0, zmax = 100,
                   xgap = CHART_CELL_GAP, ygap = CHART_CELL_GAP,
                   hovertemplate = "%{text}<extra></extra>",
-                  colorbar = list(title = list(text = colorbar_title, font = list(size = 12)),
-                                  ticksuffix = "%", tickvals = c(0, 25, 50, 75, 100), len = 0.9,
-                                  outlinewidth = 0, thickness = 14)) |>
+                  colorbar = .rx_colorbar(sc, colorbar_title)) |>
     plotly::layout(xaxis = .plot_axis(title = "", type = "category", side = "top"),
                    yaxis = .plot_axis(title = if (clock) "Hour (clock time)" else "Hour (LST)",
                                       type = "category", autorange = "reversed", dtick = 3),
@@ -139,8 +187,12 @@ plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, cloc
     circ <- m$kind == "circular"
     if (!circ) p <- plotly::add_lines(p, x = x, y = y, yaxis = yname(ax), line = list(color = "#9aa5ad", width = 1.2),
                                       hoverinfo = "skip", showlegend = FALSE, connectgaps = FALSE)
+    failed <- !is.na(pass) & !pass & !(!is.na(flagged$in_rx) & flagged$in_rx)
     p <- plotly::add_markers(p, x = x, y = y, yaxis = yname(ax), text = text, hoverinfo = "text",
-                             marker = list(color = col, size = if (circ) 6 else 5), showlegend = FALSE)
+                             marker = list(color = col, size = ifelse(failed, if (circ) 8 else 7, if (circ) 6 else 5),
+                                           symbol = ifelse(failed, "x-thin-open", "circle"),
+                                           line = list(color = col, width = ifelse(failed, 2, 0))),
+                             showlegend = FALSE)
     rng <- if (circ) c(0, 360) else {
       r <- range(c(y, if (v %in% vars) c(rx$min[rx$var == v], rx$max[rx$var == v])), na.rm = TRUE)
       if (!all(is.finite(r))) r <- c(m$slider_min, m$slider_max)
@@ -193,7 +245,7 @@ plot_event <- function(flagged, rx, text, nights, vars_show, clock = FALSE, cloc
 # days: totals_window()$days with `text` (tip_window_days). labels: every day
 # of the window in order (attr "window_days"). Colour = hours in prescription
 # that day (0 to zmax: 24, or the ignition period's hours; same ramp as the climatology); usable days outlined.
-plot_year_day <- function(days, labels, zmax = 24, colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
+plot_year_day <- function(days, labels, zmax = 24, split = SAME_MIN_RUN_H) {
   yrs <- sort(unique(days$wyear))
   z <- matrix(NA_real_, length(yrs), length(labels)); tx <- matrix("", length(yrs), length(labels))
   i <- match(days$wyear, yrs); j <- match(days$wday, labels)
@@ -201,16 +253,17 @@ plot_year_day <- function(days, labels, zmax = 24, colors = CHART_SEQ, highlight
   z[cbind(i, j)[ok, , drop = FALSE]] <- ifelse(days$n_valid[ok] > 0, days$n_true[ok], NA)
   tx[cbind(i, j)[ok, , drop = FALSE]] <- days$text[ok]
   u <- which(ok & days$usable)
-  shapes <- lapply(u, function(k)
+  rect <- function(k, col, w)
     list(type = "rect", xref = "x", yref = "y", x0 = j[k] - 1.5, x1 = j[k] - 0.5, y0 = i[k] - 1.5, y1 = i[k] - 0.5,
-         line = list(color = highlight, width = 1.1), fillcolor = "rgba(0,0,0,0)", layer = "above"))
+         line = list(color = col, width = w), fillcolor = "rgba(0,0,0,0)", layer = "above")
+  shapes <- c(lapply(u, rect, col = CHART_LINE_HALO, w = 2.6), lapply(u, rect, col = CHART_LINE, w = 1.1))
+  sc <- .rx_scale(split, zmax = zmax, step = if (zmax > 12) 2 else 1, unit = " h", split_label = "min window")
   step <- if (length(labels) > 45) 7 else if (length(labels) > 20) 3 else 1
   tv <- labels[seq(1, length(labels), by = step)]
   plotly::plot_ly(x = labels, y = as.character(yrs), z = z, text = tx, type = "heatmap",
-                  colorscale = .plot_colorscale(colors), zmin = 0, zmax = zmax,
+                  colorscale = sc$colorscale, zmin = 0, zmax = zmax,
                   xgap = 1, ygap = 1, hovertemplate = "%{text}<extra></extra>",
-                  colorbar = list(title = list(text = paste0("Hours in<br>prescription<br>(of ", zmax, ")"), font = list(size = 12)),
-                                  tickvals = unique(round(seq(0, zmax, length.out = 5))), len = 0.9, outlinewidth = 0, thickness = 14)) |>
+                  colorbar = .rx_colorbar(sc, paste0("Hours in<br>prescription<br>(of ", zmax, ")"))) |>
     plotly::layout(xaxis = .plot_axis(title = "", type = "category", tickvals = tv, side = "top",
                                       categoryorder = "array", categoryarray = labels),
                    yaxis = .plot_axis(title = "", type = "category", autorange = "reversed",
@@ -233,7 +286,7 @@ plot_year_day <- function(days, labels, zmax = 24, colors = CHART_SEQ, highlight
 # ign: NULL or doy, start, end in the chart's hours (the ignition period).
 # threshold (%): a contour line where the share crosses it (NA = none).
 plot_doy_heatmap <- function(cells, hour_col = "hour", clock = FALSE, sun = NULL, ign = NULL, threshold = NA,
-                             colors = CHART_SEQ, highlight = CHART_HIGHLIGHT) {
+                             split = if (is.na(threshold)) CLIM_HIGHLIGHT_PCT else threshold) {
   N <- CLIM_DOY_N
   x <- sort(unique(cells$doy)); y <- 0:23 + 0.5      # x: the days drawn (every CLIM_DOY_STEP-th)
   z <- matrix(NA_real_, 24, length(x)); tx <- matrix("", 24, length(x))
@@ -241,36 +294,28 @@ plot_doy_heatmap <- function(cells, hour_col = "hour", clock = FALSE, sun = NULL
   z[cbind(cells[[hour_col]] + 1, j)] <- 100 * cells$stat
   tx[cbind(cells[[hour_col]] + 1, j)] <- cells$text
   first <- as.integer(format(as.Date(sprintf("2001-%02d-01", 1:12)), "%j"))
+  sc <- .rx_scale(split)
   p <- plotly::plot_ly() |>
     plotly::add_heatmap(x = x, y = y, z = z, text = tx, hovertemplate = "%{text}<extra></extra>",
-                        colorscale = .plot_colorscale(colors), zmin = 0, zmax = 100,
-                        colorbar = list(title = list(text = "% of hours<br>in prescription", font = list(size = 12)),
-                                        ticksuffix = "%", tickvals = c(0, 25, 50, 75, 100), len = 0.9,
-                                        outlinewidth = 0, thickness = 14))
-  if (!is.na(threshold))
-    p <- plotly::add_contour(p, x = x, y = y, z = z, hoverinfo = "skip", showscale = FALSE,
-                             contours = list(start = threshold, end = threshold, size = 1, coloring = "none"),
-                             line = list(color = highlight, width = 2), showlegend = FALSE)
-  line <- function(p, yv, col, dash, name, width = 1.4)
-    plotly::add_lines(p, x = sun$doy, y = yv, line = list(color = col, width = width, dash = dash),
-                      hoverinfo = "skip", name = name, showlegend = TRUE)
+                        colorscale = sc$colorscale, zmin = 0, zmax = 100,
+                        colorbar = .rx_colorbar(sc, "% of hours<br>in prescription"))
+  if (!is.na(threshold)) p <- .plot_halo_contour(p, x, y, z, threshold)
   if (!is.null(sun)) {
-    p <- line(p, sun$sunrise, "#e0a100", "solid", "Sunrise / sunset")
-    p <- plotly::add_lines(p, x = sun$doy, y = sun$sunset, line = list(color = "#e0a100", width = 1.4),
-                           hoverinfo = "skip", showlegend = FALSE)
-    p <- line(p, sun$civil_dawn, "#7a6a9a", "dot", "Civil twilight", 1.1)
-    p <- plotly::add_lines(p, x = sun$doy, y = sun$civil_dusk, line = list(color = "#7a6a9a", width = 1.1, dash = "dot"),
-                           hoverinfo = "skip", showlegend = FALSE)
+    p <- .plot_halo_line(p, sun$doy, sun$sunrise, CHART_SUN, CHART_SUN_HALO, 1.4, name = "Sunrise / sunset", showlegend = TRUE,
+                         legend = "halo")
+    p <- .plot_halo_line(p, sun$doy, sun$sunset, CHART_SUN, CHART_SUN_HALO, 1.4)
+    p <- plotly::add_lines(p, x = sun$doy, y = sun$civil_dawn, line = list(color = CHART_SUN_HALO, width = 1.2, dash = "dot"),
+                           hoverinfo = "skip", name = "Civil twilight", showlegend = TRUE)
+    p <- .plot_halo_line(p, sun$doy, sun$civil_dawn, CHART_SUN, CHART_SUN_HALO, 1.0, dash = "dot")
+    p <- .plot_halo_line(p, sun$doy, sun$civil_dusk, CHART_SUN, CHART_SUN_HALO, 1.0, dash = "dot")
   }
   if (!is.null(ign)) {
-    p <- plotly::add_lines(p, x = ign$doy, y = ign$start, line = list(color = "#222222", width = 1.3, dash = "dash"),
-                           hoverinfo = "skip", name = "Ignition period", showlegend = TRUE)
-    p <- plotly::add_lines(p, x = ign$doy, y = ign$end, line = list(color = "#222222", width = 1.3, dash = "dash"),
-                           hoverinfo = "skip", showlegend = FALSE)
+    p <- .plot_halo_line(p, ign$doy, ign$start, width = 1.4, dash = "dash", name = "Ignition period", showlegend = TRUE)
+    p <- .plot_halo_line(p, ign$doy, ign$end, width = 1.4, dash = "dash")
   }
   if (!is.na(threshold))
-    p <- plotly::add_lines(p, x = c(NA_real_, NA_real_), y = c(NA_real_, NA_real_), line = list(color = highlight, width = 2),
-                           name = sprintf("%d%% of hours in prescription", round(threshold)), showlegend = TRUE)
+    p <- plotly::add_lines(p, x = c(-20, -19), y = c(-5, -5), line = list(color = CHART_LINE, width = 2.2), hoverinfo = "skip",
+                           name = sprintf("Threshold: %d%% of hours in prescription", round(threshold)), showlegend = TRUE)
   p |>
     plotly::layout(xaxis = .plot_axis(title = "", range = c(0.5, N + 0.5), tickvals = first, ticktext = month.abb,
                                       side = "top", ticklabelmode = "period"),
@@ -293,25 +338,20 @@ plot_doy_heatmap <- function(cells, hour_col = "hour", clock = FALSE, sun = NULL
 # the main chart, so the panels show which limit closes the window, when. The
 # mean value is in the tooltip. threshold: the same orange contour as the main chart.
 plot_var_doy <- function(cells, var, hour_col = "hour", sun = NULL, clock = FALSE, threshold = NA,
-                         highlight = CHART_HIGHLIGHT) {
+                         split = if (is.na(threshold)) CLIM_HIGHLIGHT_PCT else threshold) {
   x <- sort(unique(cells$doy)); y <- 0:23 + 0.5
   z <- matrix(NA_real_, 24, length(x)); tx <- matrix("", 24, length(x))
   ij <- cbind(cells[[hour_col]] + 1, match(cells$doy, x))
   z[ij] <- 100 * cells$pass
   tx[ij] <- cells$text
+  sc <- .rx_scale(split)
+  cb <- .rx_colorbar(sc, "% of hours<br>within this limit"); cb$len <- 0.95; cb$thickness <- 12
   p <- plotly::plot_ly() |>
     plotly::add_heatmap(x = x, y = y, z = z, text = tx, hovertemplate = "%{text}<extra></extra>",
-                        colorscale = .plot_colorscale(CHART_SEQ), zmin = 0, zmax = 100,
-                        colorbar = list(title = list(text = "% of hours<br>within this limit", font = list(size = 11)),
-                                        len = 0.95, thickness = 12, outlinewidth = 0, ticksuffix = "%",
-                                        tickvals = c(0, 50, 100)))
-  if (!is.na(threshold))
-    p <- plotly::add_contour(p, x = x, y = y, z = z, hoverinfo = "skip", showscale = FALSE, showlegend = FALSE,
-                             contours = list(start = threshold, end = threshold, size = 1, coloring = "none"),
-                             line = list(color = highlight, width = 1.6))
+                        colorscale = sc$colorscale, zmin = 0, zmax = 100, colorbar = cb)
+  if (!is.na(threshold)) p <- .plot_halo_contour(p, x, y, z, threshold, width = 1.8)
   if (!is.null(sun)) for (col in c("sunrise", "sunset"))
-    p <- plotly::add_lines(p, x = sun$doy, y = sun[[col]], line = list(color = "#e0a100", width = 1.1),
-                           hoverinfo = "skip", showlegend = FALSE)
+    p <- .plot_halo_line(p, sun$doy, sun[[col]], CHART_SUN, CHART_SUN_HALO, 1.1)
   first <- as.integer(format(as.Date(sprintf("2001-%02d-01", 1:12)), "%j"))
   p |>
     plotly::layout(xaxis = .plot_axis(title = "", range = c(0.5, CLIM_DOY_N + 0.5), tickvals = first, ticktext = month.abb),
@@ -407,7 +447,8 @@ plot_season <- function(days, bands, measures, titles, xrange, today = NULL, yma
     if (i == 1 && any(days$usable)) {
       u <- days$usable
       p <- plotly::add_markers(p, x = x[u], y = (obs + fc)[u] + ymax * 0.05, yaxis = yname(ax(i, 2)), text = days$text[u],
-                               hoverinfo = "text", marker = list(symbol = "triangle-down", size = 6, color = CHART_HIGHLIGHT),
+                               hoverinfo = "text", marker = list(symbol = "triangle-down", size = 7, color = CHART_USABLE,
+                                             line = list(color = CHART_LINE, width = 0.8)),
                                name = "Usable day", showlegend = TRUE)
     }
     p <- plotly::add_lines(p, x = ref_x, y = b$q100[j], yaxis = yname(ax(i, 3)), line = list(color = "#8a949c", width = 1, dash = "dot"),

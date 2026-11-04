@@ -95,6 +95,25 @@ local({
     .check("B7 renders to HTML; the preset menu offers every preset, starting with the example",
            all(vapply(RX_PRESET_META$label, grepl, logical(1), x = html, fixed = TRUE)))
 
+    .section("B11. Heatmap colours (docs/SPEC.md 'Colour')")
+    lum <- function(hex) { m <- grDevices::col2rgb(hex) / 255; m <- ifelse(m <= 0.04045, m / 12.92, ((m + 0.055) / 1.055)^2.4)
+                           as.numeric(c(0.2126, 0.7152, 0.0722) %*% m) }
+    for (thr0 in c(20, 30, 50, 75)) {
+      sc <- .rx_scale(thr0)
+      cols <- vapply(sc$colorscale, function(x) x[[2]], "")[c(TRUE, FALSE)]   # one colour per step
+      .check(sprintf("B11.%d a %d%% split: every step is darker than the one before (reads without hue)", thr0, thr0),
+             all(diff(vapply(cols, lum, 0)) < 0), paste(cols, collapse = " "))
+    }
+    sc <- .rx_scale(30)
+    .check("B11.9 the split is a step edge, labelled on the colour bar", 30 %in% sc$tickvals &&
+             grepl("threshold", sc$ticktext[sc$tickvals == 30], fixed = TRUE))
+    .check("B11.10 warm below the split, blue above (the ramp's ends)", sc$colour_at(5) != sc$colour_at(95) &&
+             grDevices::col2rgb(sc$colour_at(25))[1] > grDevices::col2rgb(sc$colour_at(25))[3] &&
+             grDevices::col2rgb(sc$colour_at(35))[3] > grDevices::col2rgb(sc$colour_at(35))[1])
+    sh <- .rx_scale(4, zmax = 7, step = 1, unit = " h", split_label = "min window")
+    .check("B11.11 Same dates: hours scale split at the minimum window", identical(sh$tickvals, as.numeric(0:7)) &&
+             grepl("min window", sh$ticktext[5], fixed = TRUE))
+
     .section("C. Prescription module (testServer)")
     ex_on <- .rx_example_limits()
     shiny::testServer(mod_rx_server, {
@@ -205,8 +224,8 @@ local({
     if (nrow(mf)) {
       rxi <- rx_with_settings(rx0, ignition = c(10, 17))
       shiny::testServer(mod_climatology_server, args = list(st = shiny::reactive(st0), rx = shiny::reactive(rxi)), {
-        .check("D9.1 hours outside 10:00-17:00 are washed out: 12 months x 17 hours",
-               nrow(outside_cells()) == 12 * 17)
+        .check("D9.1 the ignition period 10:00-17:00 is drawn per month (start and end lines, no wash)",
+               nrow(ign_month()) == 12 && all(ign_month()$end - ign_month()$start == 7))
         ti <- tot()$per_year; ti <- ti[ti$value == "in_rx" & ti$period == "Year", ]
         .check("D9.2 the totals count only ignition hours (7 a day)",
                all(ti$hours <= 366 * 7) && any(ti$hours >= 365 * 7 * 0.99), paste(range(ti$hours), collapse = "-"))

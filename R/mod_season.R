@@ -170,7 +170,7 @@ mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
       shiny::req(st())
       ig <- rx_ignition(rx())
       shiny::div(class = "small text-muted mt-2",
-                 sprintf("Bars: hours in prescription each day (%s); hatched: FEMS forecast. Grey band: the middle half of %d-%d for that date (\u00b1%d days), dark line the typical year, dotted line the record. Orange ticks: usable days (a run of %d+ h). Drag to zoom, double-click to reset, click a day to open its week on Past event.",
+                 sprintf("Bars: hours in prescription each day (%s); hatched: FEMS forecast. Grey band: the middle half of %d-%d for that date (\u00b1%d days), dark line the typical year, dotted line the record. Orange triangles: usable days (a run of %d+ h). Drag to zoom, double-click to reset, click a day to open its week on Past event.",
                          rx_ignition_text(ig), min(RX_BASELINE_YEARS), max(RX_BASELINE_YEARS), CLIM_SMOOTH_DAYS, rx_min_window(rx())))
     })
 

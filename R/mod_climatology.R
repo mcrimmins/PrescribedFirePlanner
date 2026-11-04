@@ -32,7 +32,7 @@ mod_climatology_ui <- function(id) {
                          shiny::div(class = "small text-muted my-2",
                                     "Each limit on its own, by hour and day of year (\u00b17 days): the share of hours that pass that one limit, ",
                                     "on the same colours as the main chart. Where a panel is pale, that limit is closing the window. ",
-                                    "The orange line is your outline threshold; hover for the mean value."),
+                                    "The black line is your outline threshold; hover for the mean value."),
                          shiny::uiOutput(ns("byvar_box"))),
         bslib::nav_panel("Daily ranges", value = "ranges",
                          shiny::uiOutput(ns("ranges_note")),
@@ -164,7 +164,7 @@ mod_climatology_server <- function(id, st, rx) {
         data.frame(doy = seq_len(CLIM_DOY_N), start = ig[1] - sh, end = ig[2] - sh)
       }
       plot_doy_heatmap(cells, hour_col = hour_col(), clock = hour_col() == "hour_clock", sun = sun, ign = ign,
-                       threshold = thr())
+                       threshold = thr(), split = split())
     })
 
     # ---- by variable: one panel per limit ----------------------------------------------------
@@ -187,7 +187,8 @@ mod_climatology_server <- function(id, st, rx) {
         s <- summ_doy(); s <- s[s$doy %in% seq(1, CLIM_DOY_N, by = CLIM_DOY_STEP), ]
         l <- lim_of(v)
         cells <- tip_var_cells(s, v, hour_col = hour_col(), lo = l[1], hi = l[2], sun = sun_doy())
-        plot_var_doy(cells, v, hour_col = hour_col(), sun = sun_doy(), clock = hour_col() == "hour_clock", threshold = thr())
+        plot_var_doy(cells, v, hour_col = hour_col(), sun = sun_doy(), clock = hour_col() == "hour_clock", threshold = thr(),
+                     split = split())
       })
     })
 
@@ -226,17 +227,17 @@ mod_climatology_server <- function(id, st, rx) {
       })
     })
 
-    # month x hour cells outside the ignition period (clock time): washed out on the heatmap.
-    # In LST at a daylight-saving station the period sits an hour earlier in summer months.
-    outside_cells <- shiny::reactive({
+    # the ignition period (clock time) on the month x hour heatmap: start and end hour per month,
+    # in the chart's hours. In LST at a daylight-saving station it sits an hour earlier in summer.
+    ign_month <- shiny::reactive({
       ig <- rx_ignition(rx()); if (is.null(ig)) return(NULL)
-      g <- expand.grid(month = 1:12, h = 0:23)
-      b <- base()
-      shift <- tapply((b$hour_clock - b$hour) %% 24, b$month, stats::median)
-      clock_h <- if (hour_col() == "hour_clock") g$h else (g$h + shift[as.character(g$month)]) %% 24
-      out <- g[!(clock_h >= ig[1] & clock_h < ig[2]), ]
-      stats::setNames(out, c("month", hour_col()))
+      sh <- if (hour_col() == "hour_clock") rep(0, 12) else {
+        b <- base(); x <- tapply((b$hour_clock - b$hour) %% 24, b$month, stats::median); as.numeric(x[as.character(1:12)])
+      }
+      data.frame(month = 1:12, start = ig[1] - sh, end = ig[2] - sh)
     })
+    # the colour split: the outline threshold (the slider value, even with the outline off)
+    split <- shiny::debounce(shiny::reactive(if (is.null(input$outline_pct)) CLIM_HIGHLIGHT_PCT else input$outline_pct), RX_DEBOUNCE_MS)
     output$heat <- plotly::renderPlotly({
       shiny::validate(shiny::need(st(), "Load a station (sidebar or Station tab) to see its climatology."))
       s <- summ()
@@ -246,7 +247,7 @@ mod_climatology_server <- function(id, st, rx) {
       ir <- s$long[s$long$value == "in_rx", ]
       cells$stat <- ir$stat[match(paste(cells$month, cells[[hour_col()]]), paste(ir$month, ir[[hour_col()]]))]
       plot_hour_heatmap(cells, hour_col = hour_col(), clock = hour_col() == "hour_clock", threshold = thr(),
-                        outside = outside_cells())
+                        split = split(), ign = ign_month())
     })
 
     output$tbl <- shiny::renderTable({
@@ -269,9 +270,10 @@ mod_climatology_server <- function(id, st, rx) {
       shiny::div(class = "small text-muted mt-2",
                  shiny::p(sprintf("Years %d-%d. Day of year: each cell pools that hour over a 15-day window (7 days either side) across those years; lines show sunrise, sunset and civil twilight%s. Month x hour: each cell pools the whole month. Limits on: %s.%s",
                                   s$years[1], s$years[2], if (is.null(rx_ignition(rx()))) "" else ", and the dashed lines the ignition period", lim,
-                                  paste0(if (is.na(thr())) "" else sprintf(" Orange: at least %d%% of hours in prescription (a contour line by day of year, outlined cells by month).", round(thr())),
+                                  paste0(sprintf(" Colours: warm below %d%% of hours, blue at or above it, darker as the share rises, in 10%% steps.", round(split())),
+                                         if (is.na(thr())) "" else " The black line (a contour by day of year, outlined cells by month) marks the threshold.",
                                          if (is.null(rx_ignition(rx()))) "" else
-                                           sprintf(" Washed out (month x hour): hours outside the ignition period (%s).", rx_ignition_text(rx_ignition(rx())))))),
+                                           sprintf(" Dashed lines: the ignition period (%s).", rx_ignition_text(rx_ignition(rx())))))),
                  shiny::p(sprintf("%s of %s hours (%s) are excluded because a limited variable is missing or was screened out; see Data quality.",
                                   format(excl, big.mark = ","), format(tot, big.mark = ","), tip_pct(excl / tot))))
     })

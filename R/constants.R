@@ -143,6 +143,19 @@ CHART_RAMP <- "blues"
 CHART_SEQ <- CHART_RAMPS[[CHART_RAMP]]$colors
 CHART_HIGHLIGHT <- CHART_RAMPS[[CHART_RAMP]]$highlight
 CHART_VALUE_SEQ <- CHART_RAMPS$ylgnbu$colors   # variable values (by-variable panels), distinct from the share ramp
+
+# ---- prescription heatmaps (decided 4 Nov 2026; docs/SPEC.md "Colour") ----------------
+# Warm below the split (the outline threshold, or the minimum window on Same
+# dates), blue above it, and ALWAYS darker as the value rises, so the order
+# reads without hue (a hue-intolerant trainer co-designs the tool). Drawn in
+# steps, with the split always a step edge.
+CHART_RX_WARM <- c("#fff4de", "#f8d3a3", "#eda766", "#d9782f")            # L* 97 -> 60
+CHART_RX_COOL <- c("#5290b5", "#3a7fa6", "#0b5e80", "#073a55", "#041f30")  # L* 57 -> 11
+CHART_RX_STEP <- 10        # % per colour step on share heatmaps
+CHART_LINE      <- "#111111"   # threshold contour, ignition period, outlines
+CHART_LINE_HALO <- "#ffffff"   # ... drawn over a wider white line so it shows on dark and light cells
+CHART_SUN       <- "#ffffff"   # sunrise / sunset / twilight
+CHART_SUN_HALO  <- "#222222"
 CHART_CELL_GAP <- 2    # px between heatmap cells
 CLIM_HIGHLIGHT_PCT <- 50   # default outline threshold: cells at or above this % of hours in prescription
 
@@ -151,10 +164,11 @@ EVENT_MAX_DAYS     <- 14    # longest stretch the Past event tab shows
 EVENT_DEFAULT_DAYS <- 7
 CHART_IN_RX  <- "#0b5e80"                  # an hour in prescription (the RxWx blue)
 CHART_OUT    <- "#c3ccd3"                  # out of prescription
-CHART_FAIL   <- CHART_HIGHLIGHT            # this limit failed at this hour
+CHART_FAIL   <- "#d9782f"                  # this limit failed at this hour (an x marker) -- the ramp's darkest warm
+CHART_USABLE <- "#d9782f"                  # usable-day ticks on the Season tracker
 CHART_NIGHT  <- "rgba(25, 45, 70, 0.07)"   # sunset to sunrise shading
 CHART_BAND   <- "rgba(11, 94, 128, 0.08)"  # the prescription range on a variable panel
-CHART_OUTSIDE_IGN <- "rgba(255, 255, 255, 0.65)"   # wash over cells / hours outside the ignition period
+# (the ignition period on heatmaps is drawn as dashed lines, not a wash: a wash would read as "fewer hours")
 CHART_IN_RX_OUT_IGN <- "#93b6c6"           # in prescription but outside the ignition period
 
 # ---- Same dates --------------------------------------------------------------------
