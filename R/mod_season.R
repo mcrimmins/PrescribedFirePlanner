@@ -34,6 +34,7 @@ mod_season_ui <- function(id) {
                      shiny::dateRangeInput(ns("window"), "Season window", start = as.Date("2001-01-01"),
                                            end = as.Date("2001-12-31"), format = "d M", startview = "year", width = "100%")),
           shiny::div(class = "mb-3 d-flex gap-1",
+            shiny::uiOutput(ns("recent_box"), inline = TRUE),
             shiny::actionButton(ns("whole"), "Whole year", class = "btn-sm btn-outline-secondary"),
             shiny::actionButton(ns("refresh"), "Refresh from FEMS", class = "btn-sm btn-outline-secondary"))),
         shiny::uiOutput(ns("status")),
@@ -86,6 +87,24 @@ mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
                                                                  end = as.Date("2001-12-31")))
 
     year <- shiny::reactive({ shiny::req(input$year); as.integer(input$year) })
+
+    # ---- zoom: the season window, or the last 7 days + the forecast (current year) -----------
+    zoom <- shiny::reactiveVal(NULL)           # NULL = show the season window
+    output$recent_box <- shiny::renderUI({
+      shiny::req(st(), input$year)
+      if (!is_current()) return(NULL)
+      shiny::actionButton(ns("recent"), "Last 7 days + forecast", class = "btn-sm btn-outline-primary",
+                          title = "Zoom to the past week and the FEMS forecast")
+    })
+    shiny::observeEvent(input$recent, {
+      t <- today(); f <- if (!is.null(lv()) && nrow(lv()$fc)) max(lv()$fc$date) else t + SEASON_RECENT_DAYS
+      zoom(c(t - SEASON_RECENT_DAYS, max(f, t)))
+    })
+    shiny::observeEvent(list(input$whole, input$window, input$year), zoom(NULL), ignoreInit = TRUE)
+    xrange <- shiny::reactive({
+      z <- zoom(); w <- win()
+      if (is.null(z)) c(w$start - 0.5, w$end + 0.5) else c(z[1] - 0.5, z[2] + 0.5)
+    })
     win <- shiny::reactive({
       d <- input$window
       shiny::validate(shiny::need(length(d) == 2 && !anyNA(d), "Choose the first and last day of the season window."))
@@ -142,7 +161,7 @@ mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
       meas <- c("in_rx", paste0("pass_", vars))
       ttl <- c("All limits (h)", paste0(c(temperature = "Temperature", relativeHumidity = "RH", windSpeed = "Wind",
                                            windDirection = "Wind dir", precipitation = "Precip", solarRadiation = "Solar")[vars], " met (h)"))
-      p <- plot_season(d, ref()$bands, meas, ttl, xrange = c(w$start - 0.5, w$end + 0.5),
+      p <- plot_season(d, ref()$bands, meas, ttl, xrange = xrange(),
                        today = if (is_current()) today() else NULL, ymax = hours_per_day(), year = year())
       if (!shiny::isolate(rendered())) rendered(TRUE)
       p

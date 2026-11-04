@@ -164,6 +164,8 @@ using the same wording, units and time label ("LST", or the clock-time zone when
     observed or forecast. Zoom and pan are linked across the panels. **Clicking a day opens its week on Past event.**
   - **Totals:** season-to-date hours in prescription and usable days against the typical year, plus a CSV, in the same
     style as the other tabs.
+  - **"Last 7 days + forecast"** button (current year only; asked for by the co-designing trainer, 4 Nov 2026): zooms
+    every panel to the past 7 days through the forecast's last day. "Whole year" or a new window goes back.
   - *As built:* the season window stays inside one calendar year (a window through New Year is refused in plain words).
     Past event and Same dates use the topped-up record, so a click on a recent day has data. The reference counts only
     days with at least 80% of the ignition hours usable.

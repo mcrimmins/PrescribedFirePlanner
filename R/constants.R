@@ -161,3 +161,4 @@ CHART_IN_RX_OUT_IGN <- "#93b6c6"           # in prescription but outside the ign
 SAME_MAX_DAYS   <- 92                    # longest window of the year
 SAME_DEFAULT    <- c("03-15", "04-15")   # month-day, until a Past event range is carried over
 SAME_MIN_RUN_H  <- 4                     # a "usable day" has at least this many consecutive hours in prescription
+SEASON_RECENT_DAYS <- 7                  # "Last 7 days + forecast" zoom on the Season tracker

@@ -60,7 +60,7 @@ local({
               "clim-totals_note", "clim-totals_main", "clim-totals_limit", "clim-csv_totals", "clim-csv_years",
               paste0("event-", c("dates", "back", "fwd", "controls", "plot_box", "caption", "totals_main", "totals_limit",
                                  "csv_daily", "csv_hourly")),
-              paste0("season-", c("year", "window", "whole", "refresh", "status", "plot_box", "caption", "totals_note",
+              paste0("season-", c("year", "window", "recent_box", "whole", "refresh", "status", "plot_box", "caption", "totals_note",
                                   "totals", "csv_days")),
               paste0("same-", c("window", "use_event", "controls", "plot_box", "caption", "totals_note",
                                 "totals_main", "totals_limit", "csv_years", "csv_days")),
@@ -283,6 +283,14 @@ local({
         d <- days()
         .check("G3 forecast days follow today: hatched part counted apart from observed",
                any(d$in_rx_fc > 0) && all(d$in_rx_fc[d$date < as.Date(format(now0, tz = st0$meta$tz))] == 0))
+        t0 <- as.Date(format(now0, tz = st0$meta$tz))
+        session$setInputs(recent = 1)
+        xr <- xrange()
+        .check("G3b 'Last 7 days + forecast' zooms to a week back through the forecast's last day",
+               xr[1] == t0 - 7 - 0.5 && xr[2] == max(d$date[d$has_fc]) + 0.5, paste(format(xr + 0.5), collapse = " to "))
+        .check("G3c ... and the button is offered for the current year", grepl("Last 7 days + forecast", paste(output$recent_box, collapse = ""), fixed = TRUE))
+        session$setInputs(whole = 1)
+        .check("G3d 'Whole year' goes back to the season window", xrange()[1] == as.Date(paste0(y, "-01-01")) - 0.5)
         pj <- paste(output$plot, collapse = "")
         .check("G4 the chart renders with observed and forecast bars, the band and the typical year",
                grepl("FEMS forecast", pj, fixed = TRUE) && grepl("Middle half of years", pj, fixed = TRUE) &&
@@ -295,7 +303,8 @@ local({
         .check("G6 the daily CSV downloads with obs/forecast columns and the reference", any(grepl("in_rx_fc", cs, fixed = TRUE)) &&
                  any(grepl("ref_median", cs, fixed = TRUE)))
         session$setInputs(year = as.character(as.integer(y) - 3))
-        .check("G7 a past year has no forecast", all(days()$in_rx_fc == 0))
+        .check("G7 a past year has no forecast, and no 'Last 7 days' button", all(days()$in_rx_fc == 0) &&
+                 !grepl("Last 7 days", paste(output$recent_box, collapse = ""), fixed = TRUE))
         session$setInputs(window = as.Date(c("2001-10-01", "2001-03-01")))
         msg <- tryCatch({ win(); "" }, error = function(e) conditionMessage(e))
         .check("G8 a window through New Year is refused in plain words", grepl("within one calendar year", msg, fixed = TRUE), msg)
