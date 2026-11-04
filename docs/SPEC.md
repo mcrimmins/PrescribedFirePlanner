@@ -135,6 +135,36 @@ using the same wording, units and time label ("LST", or the clock-time zone when
   usable days, longest run and data coverage, then typical year, lowest and highest (years named; a year under 80%
   coverage is starred and left out); the same per limit; Per year and Daily CSVs. 29 Feb is its own column, blank in
   non-leap years; a 29 Feb window end is read as 28 Feb.
+- **Season tracker** (scoped 2026-11-04 from collaborator feedback; the "Rx Burn Period" component of the project doc,
+  BPT-style; *not built yet*):
+  - **Placement:** a tab after Climatology. It uses the sidebar's station, prescription, ignition period and minimum window.
+  - **Year pull-down:** the current year by default, then every year in the record.
+  - **Range:** opens on the whole calendar year, with a settable season window (start and end month-day) that zooms
+    every chart to it.
+  - **Chart 1:** one bar per day, the hours in prescription within the ignition period.
+    - Behind the bars: the 2005-2025 **typical year (median), a 25-75% band and the record max**, smoothed ±7 days.
+    - Days with a usable window (a run of at least the minimum) are marked.
+  - **Charts 2+:** stacked panels, one per limit on, sharing the date axis and zoom with chart 1. Each shows the hours
+    per day that limit is met; the hover adds the hours that miss only because of it.
+  - **Current year:** observed days are topped up live from FEMS from the snapshot's end to today (one request, cached
+    for the session).
+  - **Forecast days:** FEMS forecast records (`observation_type` "F"), confirmed by `tests/test_fems_forecast.R`
+    (4 Nov 2026, all four bundled stations):
+    - **Hourly**, about 7 days ahead (179 hours), on the same station-local (LST) hours as the observations.
+    - Every variable the app uses is filled: temperature, RH, wind speed and direction, precipitation, solar radiation.
+    - Forecast hours start at the hour after the latest observation, with **no overlap**, so today is part observed,
+      part forecast. Today's bar is stacked, with the observed hours solid and the forecast hours hatched.
+    - FEMS returns **no issue-time field**, so the label reads "FEMS forecast, fetched <time>; starts <first forecast hour>".
+    - NFDRS forecasts are hourly too (for later NFDRS variables).
+    - Forecast hours go through the same flagging but not the screening rules (they are model output, not sensors).
+      They are drawn after a "today" line and never added to observed totals; season totals report observed and
+      "observed + forecast" separately.
+    - The live request (snapshot end to today plus the forecast) takes well under a second per station.
+  - **Interaction:** tooltips give the date, hours in prescription, longest run, the limit holding the day out, and
+    observed or forecast. Zoom and pan are linked across the panels. **Clicking a day opens its week on Past event.**
+  - **Totals:** season-to-date hours in prescription and usable days against the typical year, plus a CSV, in the same
+    style as the other tabs.
+- **Synthetic forecast:** *deferred 2026-11-04* (decide after the Season tracker).
 - **Synthetic forecast:**
   - Pick a past issue time and get a 1–7 day forecast of temperature, RH, wind speed and wind direction as a
     **central value with an uncertainty band that widens with lead time**. Precipitation and solar limits are
@@ -203,7 +233,8 @@ using the same wording, units and time label ("LST", or the clock-time zone when
 | Climatology %, window length, limiting-variable table | Real or archived forecasts |
 | Hour totals by month/day and by variable: table, CSV, PDF | |
 | Past event and same-dates-across-years views | 1-hr fine dead fuel moisture (Fosberg) calculator |
-| Synthetic forecast with reveal | Smoke dispersion, mixing height |
+| Season tracker: current year + FEMS forecast, any past year | Smoke dispersion, mixing height |
+| *(Synthetic forecast with reveal: deferred)* | |
 | Exploratory one-page PDF | Image export, saved user prescriptions |
 | Public link on Posit Connect (viz.datascience.arizona.edu) | Operational use |
 
@@ -211,6 +242,8 @@ using the same wording, units and time label ("LST", or the clock-time zone when
 - PFTC review of the drafted presets, curated stations and forecast error sizes.
 - Whether a per-hour precipitation limit is enough, or trainees need "hours since measurable rain".
 - Whether the synthetic forecast should also cover precipitation and solar radiation.
+- Season tracker: whether the synthetic forecast tab is still wanted once real forecasts are in. (What FEMS forecasts
+  contain: resolved 4 Nov 2026, hourly to about 7 days.)
 - Hour totals: whether PFTC wants "hours in prescription" counted only in daylight or the ignition period by default,
   and whether the 80% coverage rule for the median year suits their stations.
 - The Connect app name and URL, chosen once and not renamed.
