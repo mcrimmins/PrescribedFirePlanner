@@ -127,10 +127,10 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
   makes the Season tracker show the stored record with an offline note. `scripts/build_static.R` stages app.R, R/ without
   `fems_*.R`, data/ and www/, refuses to build if your FEMS credentials appear in any shipped file, and exports to
   `static_site/` (gitignored and in .rscignore). Browser check: the checklist the script prints.
-  Updating: after any app change, rebuild, then `scripts/publish_static.R` syncs `static_site/` to
-  `s3://cales-climate-reports/climate/rxwx/` (AWS CLI; refuses a build older than app.R, R/, data/ or www/; dry run, then
-  type `rxwx` to confirm; `--delete` limited to that folder; explicit Content-Type for .js/.mjs/.wasm/.json; 5-minute
-  cache on HTML and JSON; optional CloudFront invalidation). Needs HTTPS in front of the bucket (service worker).
+  Publishing: `.github/workflows/shinylive-pages.yml` runs test_static.R and build_static.R on every push to main that
+  touches app.R, R/, data/, www/ (or on demand) and deploys to GitHub Pages: https://mcrimmins.github.io/PrescribedFirePlanner/.
+  build_static.R locally is only for previewing. (An S3 copy under cales.arizona.edu/climate/rxwx/ was dropped: the site's
+  front end redirects extensionless paths, e.g. webR's DESCRIPTION files, to a trailing slash and 404s.)
 - `hourly_window(h, start, end)` (in `R/hourly.R`): rows whose month-day is in the window, with `wyear` (the year the window
   starts in, for windows through New Year) and `wday`; attr `window_days` lists every day label. `hourly_window_ndays()`
   gives each year's day count for the coverage rule. `totals_window()` turns the flagged rows into per-day, per-year and

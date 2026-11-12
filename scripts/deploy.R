@@ -213,6 +213,9 @@ local({
         .say("    git tag -a v0.1.0 -m \"First Connect deploy\"   # pick the next version")
         .say("    git push origin v0.1.0")
         if (!length(send_env)) .say("Then set FEMS_USER and FEMS_KEY in the Connect UI (Vars tab).")
+        .say("")
+        .say("Offline copy: GitHub Actions rebuilds it on each push to main that changes the app")
+        .say("    https://mcrimmins.github.io/PrescribedFirePlanner/   (check the Actions tab for a green run)")
       }
     }
   }, error = function(e) {

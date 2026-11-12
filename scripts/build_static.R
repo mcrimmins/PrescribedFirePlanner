@@ -4,7 +4,8 @@
 # Builds a static website that runs the app in the visitor's browser (webR):
 # no R server, no FEMS calls, bundled stations only, data up to the date they
 # were bundled (RXWX_STATIC in R/constants.R). A backup for when Connect is
-# down or busy; copy the output folder to any web server.
+# down or busy. Published automatically by GitHub Actions on each push
+# (.github/workflows/shinylive-pages.yml); run it here only to preview locally.
 #
 # Run from the project root, in the console, with PrescribedFirePlanner.Rproj open:
 #     source("scripts/build_static.R")
