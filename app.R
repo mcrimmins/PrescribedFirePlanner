@@ -15,7 +15,7 @@ library(shiny)
 library(bslib)
 
 # Fixed order; every file namespaces its other packages (CLAUDE.md).
-for (f in c("constants", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
+for (f in c("constants", "shared_cache", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
             "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same", "mod_season")) {
   source(file.path("R", paste0(f, ".R")))
 }

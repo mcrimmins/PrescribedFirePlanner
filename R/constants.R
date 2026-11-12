@@ -176,3 +176,9 @@ SAME_MAX_DAYS   <- 92                    # longest window of the year
 SAME_DEFAULT    <- c("03-15", "04-15")   # month-day, until a Past event range is carried over
 SAME_MIN_RUN_H  <- 4                     # a "usable day" has at least this many consecutive hours in prescription
 SEASON_RECENT_DAYS <- 7                  # "Last 7 days + forecast" zoom on the Season tracker
+
+# ---- caches shared by the sessions in one R process (R/shared_cache.R) ----
+SHARED_STATION_MAX        <- 10   # screened stations kept per process (about 27 MB each)
+SHARED_STATION_FEMS_HOURS <- 6    # a non-bundled station downloaded from FEMS is reused this long
+SHARED_LIVE_MINUTES       <- 20   # latest observations + FEMS forecast reused this long
+SHARED_LIVE_MAX           <- 20   # live top-ups kept per process

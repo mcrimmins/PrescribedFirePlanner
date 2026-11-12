@@ -8,16 +8,19 @@
 # date axis and zoom. Clicking a day opens its week on Past event.
 #
 # The live top-up (hourly_live) runs the first time the tab is shown for a
-# station, and again from the Refresh button; it is cached for the session.
+# station, and again from the Refresh button; it is cached for the session,
+# and with the real FEMS fetch also shared with the other sessions in this R
+# process for SHARED_LIVE_MINUTES (R/shared_cache.R; Refresh always fetches).
 #
 #   mod_season_server(id, st, rx, active, fetch = fems_download_weather, now = Sys.time)
 #     st      station object reactive
 #     rx      prescription reactive (with ignition / min window attributes)
 #     active  reactive TRUE while the tab is showing (starts the live fetch)
 #     fetch, now  replaceable for tests
+#     share   share live data with other sessions (default: only with the real fetch)
 #   returns list(st_full = reactive(station with live observations appended),
 #                goto    = reactive(list(date, at) for the last click, or NULL))
-# Requires R/constants.R, R/hourly.R, R/rx.R, R/climatology.R, R/totals.R,
+# Requires R/constants.R, R/shared_cache.R, R/hourly.R, R/rx.R, R/climatology.R, R/totals.R,
 # R/tooltips.R, R/plots.R.
 # ==============================================================================
 
@@ -50,27 +53,36 @@ mod_season_ui <- function(id) {
 }
 
 mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
-                              fetch = function(...) fems_download_weather(...), now = Sys.time) {
+                              fetch = function(...) fems_download_weather(...), now = Sys.time,
+                              share = missing(fetch)) {
+  # share: reuse live data across the sessions in this R process; on by default
+  # only with the real FEMS fetch, so a test's fake never leaks into the app
+  force(share)
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
     live <- shiny::reactiveVal(list())     # station_id -> hourly_live() result, or an error message
     rendered <- shiny::reactiveVal(FALSE)  # TRUE once the chart has been drawn (see `click`)
 
-    get_live <- function(s) {
+    get_live <- function(s, force = FALSE) {
       sid <- s$meta$station_id
+      key <- shared_live_key(s)
+      # another session in this R process may have fetched it in the last SHARED_LIVE_MINUTES
+      res <- if (share && !force) shared_cache_peek("live", key) else NULL
+      if (!is.null(res)) { l <- live(); l[[sid]] <- res; live(l); return(invisible()) }
       res <- shiny::withProgress(message = "Getting the latest observations and the FEMS forecast", value = 0.3, {
         tryCatch(hourly_live(s, fetch = fetch, now = now()),
                  fems_unavailable = function(e) conditionMessage(e),
                  error = function(e) paste("Couldn't get live data:", conditionMessage(e)))
       })
       if (is.character(res)) shiny::showNotification(res, type = "warning", duration = 8)
+      else if (share) shared_cache_set("live", key, res, max_age = SHARED_LIVE_MINUTES * 60, max_n = SHARED_LIVE_MAX)
       l <- live(); l[[sid]] <- res; live(l)
     }
     shiny::observe({
       shiny::req(isTRUE(active()), st())
       if (is.null(shiny::isolate(live())[[st()$meta$station_id]])) get_live(shiny::isolate(st()))
     })
-    shiny::observeEvent(input$refresh, { shiny::req(st()); get_live(st()) })
+    shiny::observeEvent(input$refresh, { shiny::req(st()); get_live(st(), force = TRUE) })
 
     lv <- shiny::reactive({ shiny::req(st()); x <- live()[[st()$meta$station_id]]; if (is.list(x)) x else NULL })
     st_full <- shiny::reactive({ shiny::req(st()); hourly_merge_live(st(), lv()) })

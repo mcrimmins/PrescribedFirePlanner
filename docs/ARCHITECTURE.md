@@ -114,6 +114,14 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
   columns, unscreened, and are never merged into `st$hourly`. `totals_season_days()`, `totals_season_reference()` and
   `totals_season_summary()` in `R/totals.R` count them (observed and forecast kept apart). `R/mod_season.R` returns
   `st_full` (the record plus live observations), which Past event and Same dates use, and `goto` (a clicked day).
+- `R/shared_cache.R` (added 12 Nov 2026, for classes of ~30 on Posit Connect): small caches shared by the sessions in one
+  R process. `mod_station` shares screened stations loaded from the bundle (never expire; at most `SHARED_STATION_MAX`,
+  least recently used dropped first; about 27 MB each); a non-bundled station downloaded from FEMS is shared for
+  `SHARED_STATION_FEMS_HOURS`. "Refresh from FEMS" is never shared. `mod_season` shares the live top-up for
+  `SHARED_LIVE_MINUTES`, keyed by station and the last hour it holds; its Refresh always fetches. Sharing is on only with
+  the real FEMS fetch (`share = missing(fetch)`), so tests' fakes never leak. Errors are never cached. Each process has
+  its own caches, emptied when Connect stops it. Connect runtime: 2-6 processes, 6 connections each, load factor 0.3,
+  idle timeout 300 s.
 - `hourly_window(h, start, end)` (in `R/hourly.R`): rows whose month-day is in the window, with `wyear` (the year the window
   starts in, for windows through New Year) and `wday`; attr `window_days` lists every day label. `hourly_window_ndays()`
   gives each year's day count for the coverage rule. `totals_window()` turns the flagged rows into per-day, per-year and
@@ -208,6 +216,9 @@ Shared dot-prefixed helpers go in `tests/helpers.R`.
   Past event totals by day, longest runs, daily and hourly CSVs; Same dates totals by year, usable days, the coverage rule.
 - `test_quality.R`: no network. Planted cases: a 0.5 h temperature step from 2021 is found with the right year; a 120 h stuck
   run appears in the screening log; coverage counts; a drought year is "info", not "affects".
+- `test_shared_cache.R`: no network. Hits, expiry, the least-recently-used cap, errors not cached; two Station sessions
+  load a bundled station once; two Season sessions make one (fake) FEMS call; Refresh fetches again; nothing is shared
+  with a fake fetch unless `share = TRUE`.
 - `test_fems_retry.R`: no network. A stubbed `.post` returns 502, 502, then 200: one result after two waits. Always 502:
   `fems_unavailable` after the last wait. 401: no retry.
 - `test_station_cache.R`: each manifest entry has its file, the checksum matches, the contract holds, the dates cover

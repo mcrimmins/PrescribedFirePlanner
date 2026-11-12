@@ -8,9 +8,11 @@
 #                 or NULL before anything is loaded
 #   open_quality  increments when the badge link is clicked
 # Loads come from the bundled snapshot when there is one; "Refresh from FEMS"
-# forces a live download. Loaded stations are cached for the session only.
-# Requires R/constants.R, R/hourly.R, R/quality.R, R/tooltips.R; leaflet is
-# namespaced, never attached.
+# forces a live download. Loaded stations are cached for the session, and
+# (except after "Refresh from FEMS") shared with the other sessions in this R
+# process, up to SHARED_STATION_MAX stations (R/shared_cache.R).
+# Requires R/constants.R, R/shared_cache.R, R/hourly.R, R/quality.R,
+# R/tooltips.R; leaflet is namespaced, never attached.
 # ==============================================================================
 
 .station_choices <- function() {
@@ -96,12 +98,19 @@ mod_station_server <- function(id) {
       }
       key <- paste0(sid, if (prefer_bundled) "" else "_live")
       if (!is.null(cache[[key]])) { current(cache[[key]]); return(invisible()) }
+      # another session in this R process may already have loaded it (R/shared_cache.R);
+      # "Refresh from FEMS" (prefer_bundled = FALSE) always downloads afresh
+      if (prefer_bundled) {
+        s <- shared_cache_peek("station", sid)
+        if (!is.null(s)) { cache[[key]] <- s; current(s); return(invisible()) }
+      }
       st <- shiny::withProgress(message = "Loading station", value = 0, {
         tryCatch({
           s <- hourly_load_station(sid, prefer_bundled = prefer_bundled,
                                    progress = function(f, msg) shiny::setProgress(f, detail = msg))
           shiny::setProgress(0.95, detail = "Checking data quality...")
           s$report <- quality_report(s)
+          if (prefer_bundled) shared_cache_set("station", sid, s, max_age = shared_station_max_age, max_n = SHARED_STATION_MAX)
           s
         },
         fems_unavailable = function(e) { shiny::showNotification(conditionMessage(e), type = "error", duration = 10); NULL },
