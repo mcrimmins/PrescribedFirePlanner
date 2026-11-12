@@ -22,7 +22,7 @@
 local({
   out_dir <- "static_site"
 
-  at_root <- file.exists("PrescribedFirePlanner.Rproj") && file.exists("app.R")
+  at_root <- file.exists("app.R") && dir.exists("R") && file.exists("R/constants.R")   # also on GitHub Actions
   if (!at_root) stop("run from the project root (open PrescribedFirePlanner.Rproj)")
   for (p in c("shinylive", "httpuv"))
     if (!requireNamespace(p, quietly = TRUE)) stop("install.packages(\"", p, "\") first")

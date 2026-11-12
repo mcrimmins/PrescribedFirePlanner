@@ -1,0 +1,71 @@
+# Build the offline (Shinylive) copy of RxWx and publish it to GitHub Pages:
+#     https://mcrimmins.github.io/PrescribedFirePlanner/
+# Runs on every push to main that touches the app, and on demand (Actions tab ->
+# "Offline copy to GitHub Pages" -> Run workflow). Uses scripts/build_static.R,
+# so the FEMS layer and credentials are never shipped; no secrets are needed.
+# One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+name: Offline copy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.R"
+      - "R/**"
+      - "data/**"
+      - "www/**"
+      - "scripts/build_static.R"
+      - "tests/test_static.R"
+      - ".github/workflows/shinylive-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install packages
+        # shinylive bundles the browser (WebAssembly) builds of the app's packages,
+        # matched to the versions installed here
+        run: Rscript -e 'install.packages(c("shinylive", "httpuv", "shiny", "bslib", "plotly", "leaflet", "htmltools"))'
+
+      - name: Check the bundled stations are in the repo
+        run: |
+          test -f data/stations_bundled/manifest.csv || { echo "data/stations_bundled/ is not committed"; exit 1; }
+          ls -la data/stations_bundled
+
+      - name: Test static mode
+        run: |
+          [ -f PrescribedFirePlanner.Rproj ] || touch PrescribedFirePlanner.Rproj   # the test helpers look for it
+          Rscript -e 'ok <- source("tests/test_static.R")$value; if (!isTRUE(ok)) quit(status = 1)'
+
+      - name: Build static_site/
+        run: Rscript -e 'source("scripts/build_static.R")'
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: static_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
