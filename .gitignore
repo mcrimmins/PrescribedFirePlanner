@@ -6,3 +6,6 @@
 tests/logs/
 # rsconnect deployment records (rewritten on every deploy)
 rsconnect/
+
+# Shinylive offline build (scripts/build_static.R)
+static_site/

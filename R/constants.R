@@ -105,6 +105,11 @@ QUALITY_STEP_MIN_SIDE   <- 3     # years needed on each side of a step
 QUALITY_TIMING_VARS     <- c("temperature", "relativeHumidity", "windSpeed", "solarRadiation")
 QUALITY_COVERAGE_MIN    <- 80    # % of hours with a value; a baseline year below this "affects results"
 
+# Static (Shinylive) build: R running in the browser via webR, no FEMS access,
+# bundled stations only (scripts/build_static.R). On automatically under webR;
+# options(rxwx.static = TRUE) before sourcing tries it in normal R.
+RXWX_STATIC <- isTRUE(getOption("rxwx.static", identical(R.version$os, "emscripten")))
+
 APP_VERSION <- "0.3.0"   # written into CSV exports; bump with each deploy tag
 
 # ---- hour totals (R/totals.R) ---------------------------------------------------

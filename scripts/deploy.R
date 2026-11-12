@@ -40,10 +40,10 @@ local({
   run_tests <- TRUE      # run the network-free tests first (about 2 minutes)
   send_env  <- c("FEMS_USER", "FEMS_KEY")   # character(0) to manage them in the Connect UI instead
   tests     <- c("sun", "hourly", "rx_flag", "climatology", "quality", "totals", "tooltips", "ui",
-                 "fems_retry", "station_cache")
+                 "fems_retry", "station_cache", "shared_cache", "static")
   git_exe   <- ""        # path to git.exe if R can't find git (e.g. "C:/Program Files/Git/cmd/git.exe")
   must_exclude <- c("^\\.Renviron$", "^CLAUDE\\.md$", "^tests/", "^docs/", "^scripts/", "^archive/",
-                    "^\\.git/", "^\\.Rproj\\.user/", "^\\.Rhistory$", "^\\.RData$", "^_send/")
+                    "^\\.git/", "^\\.Rproj\\.user/", "^\\.Rhistory$", "^\\.RData$", "^_send/", "^static_site/")
   pkgs <- c("shiny", "bslib", "leaflet", "plotly", "htmltools", "httr", "jsonlite", "dplyr", "tibble")
 
   .T <- .test_open("deploy")

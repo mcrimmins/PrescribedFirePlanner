@@ -39,7 +39,7 @@ mod_season_ui <- function(id) {
           shiny::div(class = "mb-3 d-flex gap-1",
             shiny::uiOutput(ns("recent_box"), inline = TRUE),
             shiny::actionButton(ns("whole"), "Whole year", class = "btn-sm btn-outline-secondary"),
-            shiny::actionButton(ns("refresh"), "Refresh from FEMS", class = "btn-sm btn-outline-secondary"))),
+            if (!RXWX_STATIC) shiny::actionButton(ns("refresh"), "Refresh from FEMS", class = "btn-sm btn-outline-secondary"))),
         shiny::uiOutput(ns("status")),
         shiny::uiOutput(ns("plot_box")),
         shiny::uiOutput(ns("caption")))),
@@ -79,7 +79,7 @@ mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
       l <- live(); l[[sid]] <- res; live(l)
     }
     shiny::observe({
-      shiny::req(isTRUE(active()), st())
+      shiny::req(isTRUE(active()), st(), !RXWX_STATIC)   # static build: stored record only
       if (is.null(shiny::isolate(live())[[st()$meta$station_id]])) get_live(shiny::isolate(st()))
     })
     shiny::observeEvent(input$refresh, { shiny::req(st()); get_live(st(), force = TRUE) })
@@ -155,7 +155,9 @@ mod_season_server <- function(id, st, rx, active = shiny::reactive(TRUE),
     output$status <- shiny::renderUI({
       shiny::req(st())
       x <- live()[[st()$meta$station_id]]
-      msg <- if (is.null(x)) "Live data: not fetched yet."
+      msg <- if (RXWX_STATIC) paste0("Offline copy: observations up to ", format(max(st()$hourly$date), "%d %b %Y"),
+                                     ", when this station was bundled. No latest observations or FEMS forecast.")
+             else if (is.null(x)) "Live data: not fetched yet."
              else if (is.character(x)) paste0("Live data unavailable (", x, "). Showing the stored record only.")
              else paste0("Latest observations and FEMS forecast fetched ", format(x$fetched_at, "%d %b %H:%M"),
                          if (!is.na(x$fc_start)) paste0("; forecast from ", x$fc_start, " for about 7 days") else "; no forecast returned",

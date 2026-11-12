@@ -122,6 +122,15 @@ clim_summarise(flagged, value = "in_rx", by = c("month", "hour"), smooth_days = 
   the real FEMS fetch (`share = missing(fetch)`), so tests' fakes never leak. Errors are never cached. Each process has
   its own caches, emptied when Connect stops it. Connect runtime: 2-6 processes, 6 connections each, load factor 0.3,
   idle timeout 300 s.
+- Static (Shinylive) build (12 Nov 2026, backup copy): `RXWX_STATIC` (R/constants.R) is on automatically under webR, or
+  with `options(rxwx.static = TRUE)`. It skips the FEMS layer, lists only bundled stations, hides "Refresh from FEMS" and
+  makes the Season tracker show the stored record with an offline note. `scripts/build_static.R` stages app.R, R/ without
+  `fems_*.R`, data/ and www/, refuses to build if your FEMS credentials appear in any shipped file, and exports to
+  `static_site/` (gitignored and in .rscignore). Browser check: the checklist the script prints.
+  Updating: after any app change, rebuild, then `scripts/publish_static.R` syncs `static_site/` to
+  `s3://cales-climate-reports/climate/rxwx/` (AWS CLI; refuses a build older than app.R, R/, data/ or www/; dry run, then
+  type `rxwx` to confirm; `--delete` limited to that folder; explicit Content-Type for .js/.mjs/.wasm/.json; 5-minute
+  cache on HTML and JSON; optional CloudFront invalidation). Needs HTTPS in front of the bucket (service worker).
 - `hourly_window(h, start, end)` (in `R/hourly.R`): rows whose month-day is in the window, with `wyear` (the year the window
   starts in, for windows through New Year) and `wday`; attr `window_days` lists every day label. `hourly_window_ndays()`
   gives each year's day count for the coverage rule. `totals_window()` turns the flagged rows into per-day, per-year and
@@ -219,6 +228,8 @@ Shared dot-prefixed helpers go in `tests/helpers.R`.
 - `test_shared_cache.R`: no network. Hits, expiry, the least-recently-used cap, errors not cached; two Station sessions
   load a bundled station once; two Season sessions make one (fake) FEMS call; Refresh fetches again; nothing is shared
   with a fake fetch unless `share = TRUE`.
+- `test_static.R`: no network. Static mode in normal R: loads without the FEMS layer, only bundled stations, the offline
+  notes, no Season FEMS call, and the shipped code needs none of httr, jsonlite, dplyr, tibble.
 - `test_fems_retry.R`: no network. A stubbed `.post` returns 502, 502, then 200: one result after two waits. Always 502:
   `fems_unavailable` after the last wait. 401: no retry.
 - `test_station_cache.R`: each manifest entry has its file, the checksum matches, the contract holds, the dates cover

@@ -29,20 +29,29 @@
   a$bundled  <- a$station_id %in% mf$station_id
   a$note     <- f$note[match(a$station_id, f$station_id)]
   a$label    <- paste0(a$station_name, " (", a$station_id, ")", ifelse(is.na(a$state), "", paste0(", ", a$state)))
+  if (RXWX_STATIC) a <- a[a$bundled, ]                # static build: only what ships with it
   a[order(!a$featured, a$station_name), ]
 }
 
 mod_station_sidebar_ui <- function(id) {
   ns <- shiny::NS(id)
-  shiny::tagList(shiny::div(class = "sb-head", "Station"), shiny::uiOutput(ns("card")))
+  shiny::tagList(shiny::div(class = "sb-head", "Station"),
+                 if (RXWX_STATIC) shiny::div(class = "rx-note mb-1",
+                                             "Offline copy: bundled stations only, no live FEMS data."),
+                 shiny::uiOutput(ns("card")))
 }
 
 mod_station_map_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::p(class = "text-muted mb-2",
-             "Every FEMS weather station. Larger blue markers are featured stations; those bundled with the app load instantly. ",
-             "Click a marker, then 'Select this station', or search in the sidebar."),
+    if (RXWX_STATIC)
+      shiny::p(class = "text-muted mb-2",
+               "Offline copy: only the stations bundled with the app (blue markers), with data up to the date they were bundled. ",
+               "Click a marker, then 'Select this station', or pick one in the sidebar.")
+    else
+      shiny::p(class = "text-muted mb-2",
+               "Every FEMS weather station. Larger blue markers are featured stations; those bundled with the app load instantly. ",
+               "Click a marker, then 'Select this station', or search in the sidebar."),
     leaflet::leafletOutput(ns("map"), height = "620px"))
 }
 
@@ -85,7 +94,7 @@ mod_station_server <- function(id) {
                                      shiny::span(class = if (n_aff) "badge text-bg-warning mt-1" else "badge text-bg-secondary mt-1",
                                                  if (n_aff == 1) "1 data note" else paste(n_aff, "data notes")),
                                      title = "Open the Data quality tab"),
-                   if (identical(st$source$type, "bundled"))
+                   if (identical(st$source$type, "bundled") && !RXWX_STATIC)
                      shiny::actionLink(ns("refresh"), "Refresh from FEMS", class = "small ms-2")),
         shiny::tags$details(shiny::tags$summary(class = "small", "Change station"), pick))
     })
@@ -138,12 +147,16 @@ mod_station_server <- function(id) {
                     "<br><button class='btn btn-sm btn-primary mt-2' onclick=\"Shiny.setInputValue('", ns("map_pick"),
                     "', '", stations$station_id, "', {priority: 'event'})\">Select this station</button>")
       other <- !stations$featured
-      leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
+      m <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 2)) |>
         leaflet::addProviderTiles("Esri.WorldTopoMap") |>
-        leaflet::setView(lng = -98, lat = 39, zoom = 4) |>
-        leaflet::addCircleMarkers(lng = stations$longitude[other], lat = stations$latitude[other], radius = 3,
-                                  stroke = FALSE, fillColor = "#6b6b6b", fillOpacity = 0.6,
-                                  popup = pop[other], label = stations$label[other]) |>
+        leaflet::setView(lng = -98, lat = 39, zoom = 4)
+      # leaflet errors on an empty marker layer: in the static build every station is featured
+      if (any(other))
+        m <- leaflet::addCircleMarkers(m, lng = stations$longitude[other], lat = stations$latitude[other], radius = 3,
+                                       stroke = FALSE, fillColor = "#6b6b6b", fillOpacity = 0.6,
+                                       popup = pop[other], label = stations$label[other])
+      if (!any(!other)) return(m)
+      m |>
         leaflet::addCircleMarkers(lng = stations$longitude[!other], lat = stations$latitude[!other], radius = 8,
                                   color = "#ffffff", weight = 2, fillColor = "#256abf", fillOpacity = 0.95,
                                   popup = pop[!other], label = stations$label[!other])
