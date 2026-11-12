@@ -15,8 +15,12 @@ library(shiny)
 library(bslib)
 
 # Fixed order; every file namespaces its other packages (CLAUDE.md).
+# shinylive finds packages by scanning the code; these are only called with ::
+if (FALSE) { library(plotly); library(leaflet) }
+
 for (f in c("constants", "shared_cache", "fems_download", "sun", "hourly", "quality", "rx", "climatology",
             "tooltips", "totals", "plots", "mod_station", "mod_rx", "mod_quality", "mod_climatology", "mod_event", "mod_same", "mod_season")) {
+  if (f == "fems_download" && RXWX_STATIC) next       # static build: no FEMS layer (and its files aren't shipped)
   source(file.path("R", paste0(f, ".R")))
 }
 
